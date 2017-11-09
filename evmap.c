@@ -76,12 +76,13 @@ struct evmap_signal {
    There, we use a hashtable to implement evmap_io.
 */
 #ifdef EVMAP_USE_HT
+// element, 哈希表中的基本单元
 struct event_map_entry {
-	HT_ENTRY(event_map_entry) map_node;
+	HT_ENTRY(event_map_entry) map_node; // 存第一次算出来的hash值
 	evutil_socket_t fd;
 	union { /* This is a union in case we need to make more things that can
 			   be in the hashtable. */
-		struct evmap_io evmap_io;
+		struct evmap_io evmap_io; // 包括一个event_list, TAILQ_LIST
 	} ent;
 };
 
@@ -106,8 +107,8 @@ eqsocket(struct event_map_entry *e1, struct event_map_entry *e2)
 	return e1->fd == e2->fd;
 }
 
-HT_PROTOTYPE(event_io_map, event_map_entry, map_node, hashsocket, eqsocket)
-HT_GENERATE(event_io_map, event_map_entry, map_node, hashsocket, eqsocket,
+#define HT_PROTOTYPE(event_io_map, event_map_entry, map_node, hashsocket, eqsocket) \
+HT_GENERATE(event_io_map, event_map_entry, map_node, hashsocket, eqsocket, \
 			0.5, mm_malloc, mm_realloc, mm_free)
 
 #define GET_IO_SLOT(x, map, slot, type)					\
@@ -118,6 +119,7 @@ HT_GENERATE(event_io_map, event_map_entry, map_node, hashsocket, eqsocket,
 		(x) = ent_ ? &ent_->ent.type : NULL;			\
 	} while (0);
 
+// GET_IO_SLOT_AND_CTOR(ctx, io, fd, evmap_io, evmap_io_init, evsel->fdinfo_len);
 #define GET_IO_SLOT_AND_CTOR(x, map, slot, type, ctor, fdinfo_len)	\
 	do {								\
 		struct event_map_entry key_, *ent_;			\
@@ -200,6 +202,7 @@ evmap_io_clear_(struct event_io_map* ctx)
 /** Expand 'map' with new entries of width 'msize' until it is big enough
 	to store a value in 'slot'.
  */
+// 增加一个event_signal_map.evmap_signal数组新节点
 static int
 evmap_make_space(struct event_signal_map *map, int slot, int msize)
 {
@@ -260,6 +263,9 @@ evmap_io_init(struct evmap_io *entry)
 }
 
 
+// todo: 增加一个fd event到event_base的hashtable
+// todo: 1. 找到待插入位置的event_io_entry, node
+// todo: 2. 插入node.QLIST末尾
 /* return -1 on error, 0 on success if nothing changed in the event backend,
  * and 1 on success if something did. */
 int
@@ -283,13 +289,15 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 			return (-1);
 	}
 #endif
-	GET_IO_SLOT_AND_CTOR(ctx, io, fd, evmap_io, evmap_io_init,
-						 evsel->fdinfo_len);
+	// ctx point to target entry.evmap_io
+	// todo: 1. find node
+	GET_IO_SLOT_AND_CTOR(ctx, io, fd, evmap_io, evmap_io_init, evsel->fdinfo_len);
 
 	nread = ctx->nread;
 	nwrite = ctx->nwrite;
 	nclose = ctx->nclose;
 
+	// 获取原有的读写标志
 	if (nread)
 		old |= EV_READ;
 	if (nwrite)
@@ -297,6 +305,7 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	if (nclose)
 		old |= EV_CLOSED;
 
+	// 根据event获取新的读写标志
 	if (ev->ev_events & EV_READ) {
 		if (++nread == 1)
 			res |= EV_READ;
@@ -327,15 +336,17 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 		/* XXX(niels): we cannot mix edge-triggered and
 		 * level-triggered, we should probably assert on
 		 * this. */
-		if (evsel->add(base, ev->ev_fd,
-			old, (ev->ev_events & EV_ET) | res, extra) == -1)
+		// todo: 这里把监听的fd加入到backend的具体实现的数据结构中
+		if (evsel->add(base, ev->ev_fd, old, (ev->ev_events & EV_ET) | res, extra) == -1)
 			return (-1);
 		retval = 1;
 	}
 
+	// update evmap_io.nread
 	ctx->nread = (ev_uint16_t) nread;
 	ctx->nwrite = (ev_uint16_t) nwrite;
 	ctx->nclose = (ev_uint16_t) nclose;
+	// todo: 2. insert to node.QLIST
 	LIST_INSERT_HEAD(&ctx->events, ev, ev_io_next);
 
 	return (retval);
@@ -408,6 +419,8 @@ evmap_io_del_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	return (retval);
 }
 
+// 将一个目标fd对应的event添加到base激活队列
+// todo: 1. 定位注册队列中fd位置event, 2. 插入到激活队列
 void
 evmap_io_active_(struct event_base *base, evutil_socket_t fd, short events)
 {
@@ -438,6 +451,7 @@ evmap_signal_init(struct evmap_signal *entry)
 }
 
 
+// 添加一个event 到 base, 添加到base.event_signal_map.evmap_signal节点
 int
 evmap_signal_add_(struct event_base *base, int sig, struct event *ev)
 {
@@ -450,6 +464,8 @@ evmap_signal_add_(struct event_base *base, int sig, struct event *ev)
 			map, sig, sizeof(struct evmap_signal *)) == -1)
 			return (-1);
 	}
+	// todo: 1. find node
+	// make ctx evmap_signal*
 	GET_SIGNAL_SLOT_AND_CTOR(ctx, map, sig, evmap_signal, evmap_signal_init,
 	    base->evsigsel->fdinfo_len);
 
@@ -459,6 +475,7 @@ evmap_signal_add_(struct event_base *base, int sig, struct event *ev)
 			return (-1);
 	}
 
+	// todo: 2. insert to node.QLIST
 	LIST_INSERT_HEAD(&ctx->events, ev, ev_signal_next);
 
 	return (1);

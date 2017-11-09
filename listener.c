@@ -39,6 +39,9 @@
 #include <mswsock.h>
 #endif
 #include <errno.h>
+#include <event2/listener.h>
+#include <evdns.h>
+
 #ifdef EVENT__HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif

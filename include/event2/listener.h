@@ -34,6 +34,9 @@ extern "C" {
 #endif
 
 #include <event2/event.h>
+#include <zconf.h>
+#include "util.h"
+#include "visibility.h"
 
 struct sockaddr;
 struct evconnlistener;

@@ -41,6 +41,7 @@ struct event_base;
 
 static pthread_mutexattr_t attr_recursive;
 
+// 以下是默认的cbs.lock/unlock实现
 static void *
 evthread_posix_lock_alloc(unsigned locktype)
 {
@@ -160,6 +161,8 @@ evthread_posix_cond_wait(void *cond_, void *lock_, const struct timeval *tv)
 	}
 }
 
+
+// todo: 使用默认的cbs来set
 int
 evthread_use_pthreads(void)
 {

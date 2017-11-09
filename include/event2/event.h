@@ -285,7 +285,7 @@ struct event
  * There are many options that can be used to alter the behavior and
  * implementation of an event_base.  To avoid having to pass them all in a
  * complex many-argument constructor, we provide an abstract data type
- * wrhere you set up configation information before passing it to
+ * where you set up configuration information before passing it to
  * event_base_new_with_config().
  *
  * @see event_config_new(), event_config_free(), event_base_new_with_config(),
@@ -1084,38 +1084,7 @@ struct event *event_new(struct event_base *, evutil_socket_t, short, event_callb
   Prepare a new, already-allocated event structure to be added.
 
   The function event_assign() prepares the event structure ev to be used
-  in future calls to event_add() and event_del().  Unlike event_new(), it
-  doesn't allocate memory itself: it requires that you have already
-  allocated a struct event, probably on the heap.  Doing this will
-  typically make your code depend on the size of the event structure, and
-  thereby create incompatibility with future versions of Libevent.
-
-  The easiest way to avoid this problem is just to use event_new() and
-  event_free() instead.
-
-  A slightly harder way to future-proof your code is to use
-  event_get_struct_event_size() to determine the required size of an event
-  at runtime.
-
-  Note that it is NOT safe to call this function on an event that is
-  active or pending.  Doing so WILL corrupt internal data structures in
-  Libevent, and lead to strange, hard-to-diagnose bugs.  You _can_ use
-  event_assign to change an existing event, but only if it is not active
-  or pending!
-
-  The arguments for this function, and the behavior of the events that it
-  makes, are as for event_new().
-
-  @param ev an event struct to be modified
-  @param base the event base to which ev should be attached.
-  @param fd the file descriptor to be monitored
-  @param events desired events to monitor; can be EV_READ and/or EV_WRITE
-  @param callback callback function to be invoked when the event occurs
-  @param callback_arg an argument to be passed to the callback function
-
-  @return 0 if success, or -1 on invalid arguments.
-
-  @see event_new(), event_add(), event_del(), event_base_once(),
+  in future calls to event_add(), event_del(), event_base_once(),
     event_get_struct_event_size()
   */
 EVENT2_EXPORT_SYMBOL
@@ -1210,7 +1179,7 @@ int event_base_once(struct event_base *, evutil_socket_t, short, event_callback_
 
   The function event_add() schedules the execution of the event 'ev' when the
   condition specified by event_assign() or event_new() occurs, or when the time
-  specified in timeout has elapesed.  If atimeout is NULL, no timeout
+  specified in timeout has elapesed.  If timeout is NULL, no timeout
   occurs and the function will only be
   called if a matching event occurs.  The event in the
   ev argument must be already initialized by event_assign() or event_new()
@@ -1219,6 +1188,7 @@ int event_base_once(struct event_base *, evutil_socket_t, short, event_callback_
 
   If the event in the ev argument already has a scheduled timeout, calling
   event_add() replaces the old timeout with the new one if tv is non-NULL.
+  多次event_add添加同一个event的功能就是更改timeout
 
   @param ev an event struct initialized via event_assign() or event_new()
   @param timeout the maximum amount of time to wait for the event, or NULL

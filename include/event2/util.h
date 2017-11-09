@@ -78,6 +78,8 @@ extern "C" {
 #endif
 
 #include <time.h>
+#include <elf.h>
+#include "visibility.h"
 
 /* Some openbsd autoconf versions get the name of this macro wrong. */
 #if defined(EVENT__SIZEOF_VOID__) && !defined(EVENT__SIZEOF_VOID_P)

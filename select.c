@@ -75,6 +75,8 @@ typedef unsigned long fd_mask;
 #define SELECT_ALLOC_SIZE(n) \
 	(DIV_ROUNDUP(n, NFDBITS) * sizeof(fd_mask))
 
+// select实现的eventop和其函数实现,用于绑定到eventop
+
 struct selectop {
 	int event_fds;		/* Highest fd in fd set */
 	int event_fdsz;

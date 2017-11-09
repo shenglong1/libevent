@@ -24,6 +24,7 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 #include <event2/event.h>
+#include <evdns.h>
 
 static const char MESSAGE[] = "Hello, World!\n";
 

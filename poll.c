@@ -168,6 +168,7 @@ poll_dispatch(struct event_base *base, struct timeval *tv)
 
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
 
+  // wait
 	res = poll(event_set, nfds, msec);
 
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
@@ -207,6 +208,7 @@ poll_dispatch(struct event_base *base, struct timeval *tv)
 		if (res == 0)
 			continue;
 
+    // add to active queue
 		evmap_io_active_(base, event_set[i].fd, res);
 	}
 

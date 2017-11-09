@@ -95,6 +95,8 @@ event_set_fatal_callback(event_fatal_cb cb)
 	fatal_fn = cb;
 }
 
+// 这些event_xxx区别仅在于errstr的获取
+
 static void
 event_exit(int errcode)
 {
@@ -192,6 +194,7 @@ event_debugx_(const char *fmt, ...)
 	va_end(ap);
 }
 
+// event_xxx所有日志函数都call到这里
 void
 event_logv_(int severity, const char *errstr, const char *fmt, va_list ap)
 {
@@ -202,7 +205,7 @@ event_logv_(int severity, const char *errstr, const char *fmt, va_list ap)
 		return;
 
 	if (fmt != NULL)
-		evutil_vsnprintf(buf, sizeof(buf), fmt, ap);
+		evutil_vsnprintf(buf, sizeof(buf), fmt, ap); // copy to buf
 	else
 		buf[0] = '\0';
 

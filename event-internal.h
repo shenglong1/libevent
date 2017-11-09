@@ -82,6 +82,7 @@ extern "C" {
 #define EV_CLOSURE_EVENT_FINALIZE_FREE 6
 /** @} */
 
+// base 的backend //
 /** Structure to define the backend of a given event_base. */
 struct eventop {
 	/** The name of this backend. */
@@ -151,6 +152,7 @@ HT_HEAD(event_io_map, event_map_entry);
 struct event_signal_map {
 	/* An array of evmap_io * or of evmap_signal *; empty entries are
 	 * set to NULL. */
+  // evmap_signal **entries
 	void **entries;
 	/* The number of entries available in entries */
 	int nentries;
@@ -208,10 +210,10 @@ struct event_once {
 struct event_base {
 	/** Function pointers and other data to describe this event_base's
 	 * backend. */
-	const struct eventop *evsel;
+	const struct eventop *evsel; // todo: this is backend !!!
 	/** Pointer to backend-specific data. */
-	void *evbase;
-
+	void *evbase; // todo: backend realdata, 具体IO实例的数据结构, pollop
+	/**
 	/** List of changes to tell backend about at next dispatch.  Only used
 	 * by the O(1) backends. */
 	struct event_changelist changelist;
@@ -219,7 +221,7 @@ struct event_base {
 	/** Function pointers used to describe the backend that this event_base
 	 * uses for signals */
 	const struct eventop *evsigsel;
-	/** Data to implement the common signal handelr code. */
+	/** Data to implement the common signal handler code. */
 	struct evsig_info sig;
 
 	/** Number of virtual events */
@@ -261,6 +263,8 @@ struct event_base {
 	 * that have triggered, and whose callbacks need to be called).  Low
 	 * priority numbers are more important, and stall higher ones.
 	 */
+	// 指向evcallback_list数组，下标识pri优先级，
+	// 每个evcallback_list中包含多个event_callback*,每个对应一个event
 	struct evcallback_list *activequeues;
 	/** The length of the activequeues array */
 	int nactivequeues;
@@ -278,6 +282,7 @@ struct event_base {
 	/** The total size of common_timeout_queues. */
 	int n_common_timeouts_allocated;
 
+	// todo: event register queue
 	/** Mapping from file descriptors to enabled (added) events */
 	struct event_io_map io;
 
@@ -285,7 +290,7 @@ struct event_base {
 	struct event_signal_map sigmap;
 
 	/** Priority queue of events with timeouts. */
-	struct min_heap timeheap;
+	struct min_heap timeheap; // 所有event都对应一个超时
 
 	/** Stored timeval: used to avoid calling gettimeofday/clock_gettime
 	 * too often. */
@@ -350,6 +355,10 @@ struct event_base {
 
 struct event_config_entry {
 	TAILQ_ENTRY(event_config_entry) next;
+//	struct {
+//	struct event_config_entry *tqe_next;	/* next element */
+//	struct event_config_entry **tqe_prev;	/* address of previous next element */
+//  };
 
 	const char *avoid_method;
 };
@@ -358,13 +367,17 @@ struct event_config_entry {
  * that we're about to allocate. */
 struct event_config {
 	TAILQ_HEAD(event_configq, event_config_entry) entries;
+//	struct event_configq {
+//	struct event_config_entry *tqh_first;
+//	struct event_config_entry **tqh_last;
+//	};
 
 	int n_cpus_hint;
 	struct timeval max_dispatch_interval;
 	int max_dispatch_callbacks;
 	int limit_callbacks_after_prio;
-	enum event_method_feature require_features;
-	enum event_base_config_flag flags;
+	enum event_method_feature require_features; // backend method 的必须条件
+	enum event_base_config_flag flags; // optional option
 };
 
 /* Internal use only: Functions that might be missing from <sys/queue.h> */

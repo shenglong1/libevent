@@ -61,6 +61,7 @@ GLOBAL struct evthread_condition_callbacks evthread_cond_fns_ = {
 };
 
 /* Used for debugging */
+// 当使用debbug模式时，callbacks设定的lock是放到original_lock_fns_中的，debuglog放到evthread_cond_fns_中
 static struct evthread_lock_callbacks original_lock_fns_ = {
 	0, 0, NULL, NULL, NULL, NULL
 };
@@ -191,6 +192,8 @@ struct debug_lock {
 	void *lock;
 };
 
+// 带有统计的lock函数
+// 使用的还是原来的lock，仅增加统计
 static void *
 debug_lock_alloc(unsigned locktype)
 {
@@ -230,6 +233,7 @@ debug_lock_free(void *lock_, unsigned locktype)
 	mm_free(lock);
 }
 
+// 仅是lock下改变debug_lock统计
 static void
 evthread_debug_lock_mark_locked(unsigned mode, struct debug_lock *lock)
 {

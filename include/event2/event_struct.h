@@ -54,6 +54,7 @@ extern "C" {
 /* For evkeyvalq */
 #include <event2/keyvalq_struct.h>
 
+// event 当前的所处位置
 #define EVLIST_TIMEOUT	    0x01
 #define EVLIST_INSERTED	    0x02
 #define EVLIST_SIGNAL	    0x04
@@ -110,7 +111,7 @@ struct event_callback {
 	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority */
 	ev_uint8_t evcb_closure;
 	/* allows us to adopt for different types of events */
-        union {
+	union {
 		void (*evcb_callback)(evutil_socket_t, short, void *);
 		void (*evcb_selfcb)(struct event_callback *, void *);
 		void (*evcb_evfinalize)(struct event *, void *);
@@ -121,17 +122,24 @@ struct event_callback {
 
 struct event_base;
 struct event {
-	struct event_callback ev_evcallback;
+	struct event_callback ev_evcallback; // event的所有callback, 4选1
 
+  // timeout时间始终放在miniheap中
 	/* for managing timeouts */
 	union {
 		TAILQ_ENTRY(event) ev_next_with_common_timeout;
 		int min_heap_idx;
 	} ev_timeout_pos;
-	evutil_socket_t ev_fd;
 
 	struct event_base *ev_base;
 
+	evutil_socket_t ev_fd; // fd or sig
+
+	// fd和信号不能同时被监听
+	//无论是信号还是IO，都有一个TAILQ_ENTRY的队列。它用于这样的情景:
+	//用户对同一个fd调用event_new多次，并且都使用了不同的回调函数。
+	//每次调用event_new都会产生一个event*。这个xxx_next成员就是把这些
+	//event连接起来的。
 	union {
 		/* used for io events */
 		struct {
@@ -163,7 +171,7 @@ TAILQ_HEAD (event_list, event);
 #undef TAILQ_HEAD
 #endif
 
-LIST_HEAD (event_dlist, event); 
+LIST_HEAD (event_dlist, event);
 
 #ifdef EVENT_DEFINED_LISTENTRY_
 #undef LIST_ENTRY
