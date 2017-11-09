@@ -220,9 +220,9 @@ struct event_base {
 
 	/** Function pointers used to describe the backend that this event_base
 	 * uses for signals */
-	const struct eventop *evsigsel;
+	const struct eventop *evsigsel; // evsigops
 	/** Data to implement the common signal handler code. */
-	struct evsig_info sig;
+	struct evsig_info sig; // 这里是fd-event-sockpair-sig-fun的全量信息；
 
 	/** Number of virtual events */
 	int virtual_event_count;

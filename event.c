@@ -1221,8 +1221,7 @@ event_base_priority_init(struct event_base *base, int npriorities)
 	}
 
 	/* Allocate our priority queues */
-	base->activequeues = (struct evcallback_list *)
-			mm_calloc(npriorities, sizeof(struct evcallback_list));
+	base->activequeues = (struct evcallback_list *)mm_calloc(npriorities, sizeof(struct evcallback_list));
 	if (base->activequeues == NULL) {
 		event_warn("%s: calloc", __func__);
 		goto err;
@@ -1314,6 +1313,7 @@ event_haveevents(struct event_base *base)
 }
 
 /* "closure" function called when processing active signal events */
+// 执行signal 类型event.callback
 static inline void
 event_signal_closure(struct event_base *base, struct event *ev)
 {
@@ -1641,7 +1641,7 @@ event_process_active_single_queue(struct event_base *base,
 		switch (evcb->evcb_closure) {
 			case EV_CLOSURE_EVENT_SIGNAL:
 				EVUTIL_ASSERT(ev != NULL);
-				event_signal_closure(base, ev);
+				event_signal_closure(base, ev); // 如果是信号监听的fd-event触发，则到这里
 				break;
 			case EV_CLOSURE_EVENT_PERSIST:
 				EVUTIL_ASSERT(ev != NULL);

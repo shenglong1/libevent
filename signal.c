@@ -91,6 +91,7 @@
 static int evsig_add(struct event_base *, evutil_socket_t, short, short, void *);
 static int evsig_del(struct event_base *, evutil_socket_t, short, short, void *);
 
+// signal backend
 static const struct eventop evsigops = {
 	"signal",
 	NULL,
@@ -127,6 +128,7 @@ evsig_set_base_(struct event_base *base)
 }
 
 /* Callback for when the signal handler write a byte to our signaling socket */
+// signal fd-event触发后的公共函数
 static void
 evsig_cb(evutil_socket_t fd, short what, void *arg)
 {
@@ -170,6 +172,8 @@ evsig_cb(evutil_socket_t fd, short what, void *arg)
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
 }
 
+// construct一个完备的evsig_info
+// 创建整个fd-event-sockpair-sig-fun结构
 int
 evsig_init_(struct event_base *base)
 {
@@ -178,6 +182,7 @@ evsig_init_(struct event_base *base)
 	 * pair to wake up our event loop.  The event loop then scans for
 	 * signals that got delivered.
 	 */
+	// todo: 1. sockpair
 	if (evutil_make_internal_pipe_(base->sig.ev_signal_pair) == -1) {
 #ifdef _WIN32
 		/* Make this nonfatal on win32, where sometimes people
@@ -195,22 +200,22 @@ evsig_init_(struct event_base *base)
 	base->sig.sh_old = NULL;
 	base->sig.sh_old_max = 0;
 
-	event_assign(&base->sig.ev_signal, base, base->sig.ev_signal_pair[0],
-		EV_READ | EV_PERSIST, evsig_cb, base);
+	// todo: 2. fd-event
+	event_assign(&base->sig.ev_signal, base, base->sig.ev_signal_pair[0], EV_READ | EV_PERSIST, evsig_cb, base);
 
 	base->sig.ev_signal.ev_flags |= EVLIST_INTERNAL;
 	event_priority_set(&base->sig.ev_signal, 0);
 
-	base->evsigsel = &evsigops;
+	base->evsigsel = &evsigops; // backend
 
 	return 0;
 }
 
 /* Helper: set the signal handler for evsignal to handler in base, so that
  * we can restore the original handler when we clear the current one. */
+// store old sigfuns, bind the only one sigfun(evsig_handler)
 int
-evsig_set_handler_(struct event_base *base,
-    int evsignal, void (__cdecl *handler)(int))
+evsig_set_handler_(struct event_base *base, int evsignal, void (__cdecl *handler)(int))
 {
 #ifdef EVENT__HAVE_SIGACTION
 	struct sigaction sa;
@@ -274,6 +279,7 @@ evsig_set_handler_(struct event_base *base,
 	return (0);
 }
 
+// signal 特殊的backend.add, 添加一个sig-fun到监听队列
 static int
 evsig_add(struct event_base *base, evutil_socket_t evsignal, short old, short events, void *p)
 {
@@ -295,17 +301,18 @@ evsig_add(struct event_base *base, evutil_socket_t evsignal, short old, short ev
 	}
 	evsig_base = base;
 	evsig_base_n_signals_added = ++sig->ev_n_signals_added;
-	evsig_base_fd = base->sig.ev_signal_pair[1];
+	evsig_base_fd = base->sig.ev_signal_pair[1]; // 设置全局的唤醒fd，sigfun中向这里send
 	EVSIGBASE_UNLOCK();
 
 	event_debug(("%s: %d: changing signal handler", __func__, (int)evsignal));
+  // construct sig-fun
 	if (evsig_set_handler_(base, (int)evsignal, evsig_handler) == -1) {
 		goto err;
 	}
 
-
+	// event_base第一次监听信号事件。要添加ev_signal到event_base.event_io_map中
 	if (!sig->ev_signal_added) {
-		if (event_add_nolock_(&sig->ev_signal, NULL, 0))
+		if (event_add_nolock_(&sig->ev_signal, NULL, 0)) // 实质监听signal最终是event_io_map和io_backend监听fd-event
 			goto err;
 		sig->ev_signal_added = 1;
 	}
@@ -357,6 +364,7 @@ evsig_restore_handler_(struct event_base *base, int evsignal)
 	return ret;
 }
 
+// signal 特殊的backend.del
 static int
 evsig_del(struct event_base *base, evutil_socket_t evsignal, short old, short events, void *p)
 {
@@ -373,6 +381,7 @@ evsig_del(struct event_base *base, evutil_socket_t evsignal, short old, short ev
 	return (evsig_restore_handler_(base, (int)evsignal));
 }
 
+// 唯一的sigfun, write sig to global notify_fd
 static void __cdecl
 evsig_handler(int sig)
 {

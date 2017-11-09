@@ -215,10 +215,11 @@ poll_dispatch(struct event_base *base, struct timeval *tv)
 	return (0);
 }
 
+// error: 无论fd_event外部是io或者是signal，到这里都一样的构造pollop，并加入monitor
 static int
 poll_add(struct event_base *base, int fd, short old, short events, void *idx_)
 {
-	struct pollop *pop = base->evbase;
+	struct pollop *pop = base->evbase; // for one fd
 	struct pollfd *pfd = NULL;
 	struct pollidx *idx = idx_;
 	int i;

@@ -202,7 +202,7 @@ evmap_io_clear_(struct event_io_map* ctx)
 /** Expand 'map' with new entries of width 'msize' until it is big enough
 	to store a value in 'slot'.
  */
-// 增加一个event_signal_map.evmap_signal数组新节点
+// todo: 增加重分配event_signal_map指向的一级指针数组
 static int
 evmap_make_space(struct event_signal_map *map, int slot, int msize)
 {
@@ -211,7 +211,7 @@ evmap_make_space(struct event_signal_map *map, int slot, int msize)
 		void **tmp;
 
 		while (nentries <= slot)
-			nentries <<= 1;
+			nentries <<= 1; // 重分配map的扩容弄策略, 2倍
 
 		tmp = (void **)mm_realloc(map->entries, nentries * msize);
 		if (tmp == NULL)
@@ -451,7 +451,8 @@ evmap_signal_init(struct evmap_signal *entry)
 }
 
 
-// 添加一个event 到 base, 添加到base.event_signal_map.evmap_signal节点
+// 添加一个sig event到 base, 添加到base.event_signal_map.evmap_signal节点
+// 添加event到event_signal_map注册队列，backend.add添加到监听队列
 int
 evmap_signal_add_(struct event_base *base, int sig, struct event *ev)
 {
@@ -460,17 +461,15 @@ evmap_signal_add_(struct event_base *base, int sig, struct event *ev)
 	struct evmap_signal *ctx = NULL;
 
 	if (sig >= map->nentries) {
-		if (evmap_make_space(
-			map, sig, sizeof(struct evmap_signal *)) == -1)
+		if (evmap_make_space(map, sig, sizeof(struct evmap_signal *)) == -1)
 			return (-1);
 	}
 	// todo: 1. find node
 	// make ctx evmap_signal*
-	GET_SIGNAL_SLOT_AND_CTOR(ctx, map, sig, evmap_signal, evmap_signal_init,
-	    base->evsigsel->fdinfo_len);
+	GET_SIGNAL_SLOT_AND_CTOR(ctx, map, sig, evmap_signal, evmap_signal_init, base->evsigsel->fdinfo_len);
 
 	if (LIST_EMPTY(&ctx->events)) {
-		if (evsel->add(base, ev->ev_fd, 0, EV_SIGNAL, NULL)
+		if (evsel->add(base, ev->ev_fd, 0, EV_SIGNAL, NULL) // add to backend monitor queue
 		    == -1)
 			return (-1);
 	}
