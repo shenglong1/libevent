@@ -424,6 +424,7 @@ clear_time_cache(struct event_base *base)
 	base->tv_cache.tv_sec = 0;
 }
 
+// 重算base.tv_cache
 /** Replace the cached time in 'base' with the current time. */
 static inline void
 update_time_cache(struct event_base *base)
@@ -683,7 +684,7 @@ event_base_new_with_config(const struct event_config *cfg)
 		int r;
 		EVTHREAD_ALLOC_LOCK(base->th_base_lock, 0);
 		EVTHREAD_ALLOC_COND(base->current_event_cond);
-		r = evthread_make_base_notifiable(base);
+		r = evthread_make_base_notifiable(base); // 初始化notify base
 		if (r<0) {
 			event_warnx("%s: Unable to make base notifiable.", __func__);
 			event_base_free(base);
@@ -1194,6 +1195,7 @@ event_config_set_max_dispatch_interval(struct event_config *cfg,
 	return (0);
 }
 
+// init base.activequeues 即是激活队列，也是优先级队列
 int
 event_priority_init(int npriorities)
 {
@@ -1364,6 +1366,7 @@ event_signal_closure(struct event_base *base, struct event *ev)
 #define COMMON_TIMEOUT_MASK     0xf0000000
 #define COMMON_TIMEOUT_MAGIC    0x50000000
 
+// index 计算策略：tv.tv_usec的16进制高21~28为
 #define COMMON_TIMEOUT_IDX(tv) \
 	(((tv)->tv_usec & COMMON_TIMEOUT_IDX_MASK)>>COMMON_TIMEOUT_IDX_SHIFT)
 
@@ -1373,7 +1376,7 @@ is_common_timeout(const struct timeval *tv,
 									const struct event_base *base)
 {
 	int idx;
-	if ((tv->tv_usec & COMMON_TIMEOUT_MASK) != COMMON_TIMEOUT_MAGIC)
+	if ((tv->tv_usec & COMMON_TIMEOUT_MASK) != COMMON_TIMEOUT_MAGIC) // todo: ???
 		return 0;
 	idx = COMMON_TIMEOUT_IDX(tv);
 	return idx < base->n_common_timeouts;
@@ -1447,6 +1450,7 @@ common_timeout_callback(evutil_socket_t fd, short what, void *arg)
 
 #define MAX_COMMON_TIMEOUTS 256
 
+// malloc and init base.common_timeout_list
 const struct timeval *
 event_base_init_common_timeout(struct event_base *base,
 															 const struct timeval *duration)
@@ -1457,6 +1461,7 @@ event_base_init_common_timeout(struct event_base *base,
 	struct common_timeout_list *new_ctl;
 
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
+	// todo: ? fix time ?
 	if (duration->tv_usec > 1000000) {
 		memcpy(&tv, duration, sizeof(struct timeval));
 		if (is_common_timeout(duration, base))
@@ -1466,11 +1471,8 @@ event_base_init_common_timeout(struct event_base *base,
 		duration = &tv;
 	}
 	for (i = 0; i < base->n_common_timeouts; ++i) {
-		const struct common_timeout_list *ctl =
-				base->common_timeout_queues[i];
-		if (duration->tv_sec == ctl->duration.tv_sec &&
-				duration->tv_usec ==
-				(ctl->duration.tv_usec & MICROSECONDS_MASK)) {
+		const struct common_timeout_list *ctl = base->common_timeout_queues[i];
+		if (duration->tv_sec == ctl->duration.tv_sec && duration->tv_usec == (ctl->duration.tv_usec & MICROSECONDS_MASK)) {
 			EVUTIL_ASSERT(is_common_timeout(&ctl->duration, base));
 			result = &ctl->duration;
 			goto done;
@@ -1645,7 +1647,7 @@ event_process_active_single_queue(struct event_base *base,
 				break;
 			case EV_CLOSURE_EVENT_PERSIST:
 				EVUTIL_ASSERT(ev != NULL);
-				event_persist_closure(base, ev);
+				event_persist_closure(base, ev); // 处理PERSIST的非signal事件, PERSIST timeout event也在这里rebind
 				break;
 			case EV_CLOSURE_EVENT: {
 				void (*evcb_callback)(evutil_socket_t, short, void *);
@@ -1933,13 +1935,14 @@ event_base_loop(struct event_base *base, int flags)
 
 		tv_p = &tv;
 		if (!N_ACTIVE_CALLBACKS(base) && !(flags & EVLOOP_NONBLOCK)) {
-			timeout_next(base, &tv_p);
+			// 激活队列空，且block模式
+			timeout_next(base, &tv_p); // 重算tv_p // 选出超时值最小的那个 // 推进ev时间
 		} else {
 			/*
 			 * if we have active events, we just poll new events
 			 * without waiting.
 			 */
-			evutil_timerclear(&tv);
+			evutil_timerclear(&tv); // 清空tv
 		}
 
 		/* If we have no events, we just exit */
@@ -1965,7 +1968,7 @@ event_base_loop(struct event_base *base, int flags)
 
 		update_time_cache(base);
 
-		timeout_process(base);
+		timeout_process(base); // 处理超时：加入激活队列，从base中删除
 
 		if (N_ACTIVE_CALLBACKS(base)) {
 			int n = event_process_active(base); // 处理激活队列中的event,call callbacks
@@ -2694,16 +2697,17 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 #ifdef USE_REINSERT_TIMEOUT
 		event_queue_reinsert_timeout(base, ev, was_common, common_timeout, old_timeout_idx);
 #else
-		event_queue_insert_timeout(base, ev);
+		event_queue_insert_timeout(base, ev); // 一个event_timeout加入base
 #endif
 
 		if (common_timeout) {
-			struct common_timeout_list *ctl =
-					get_common_timeout_list(base, &ev->ev_timeout);
+			// 找到当前ev.ev_timeout所在的common_timeout_list
+			struct common_timeout_list *ctl = get_common_timeout_list(base, &ev->ev_timeout);
 			if (ev == TAILQ_FIRST(&ctl->events)) {
 				common_timeout_schedule(ctl, &now, ev);
 			}
 		} else {
+			// 检查min_heap.top 是否超时
 			struct event* top = NULL;
 			/* See if the earliest timeout is now earlier than it
 			 * was before: if so, we will need to tell the main
@@ -2712,16 +2716,16 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 			 * handle time distortions due to system suspension.
 			 */
 			if (min_heap_elt_is_top_(ev))
-				notify = 1;
+				notify = 1; // 新添加的是最小的
 			else if ((top = min_heap_top_(&base->timeheap)) != NULL &&
 							 evutil_timercmp(&top->ev_timeout, &now, <))
-				notify = 1;
+				notify = 1; // heap中top 已经超时
 		}
 	}
 
 	/* if we are not in the right thread, we need to wake up the loop */
 	if (res != -1 && notify && EVBASE_NEED_NOTIFY(base))
-		evthread_notify_base(base);
+		evthread_notify_base(base); // 每次添加一个event到base中都要notify
 
 	event_debug_note_add_(ev);
 
@@ -3099,6 +3103,8 @@ event_deferred_cb_schedule_(struct event_base *base, struct event_callback *cb)
 	return r;
 }
 
+// main loop 中 推进时间
+// 选出超时值最小的那个
 static int
 timeout_next(struct event_base *base, struct timeval **tv_p)
 {
@@ -3121,12 +3127,14 @@ timeout_next(struct event_base *base, struct timeval **tv_p)
 		goto out;
 	}
 
+	// todo: 1. ev已经超时，立即触发
 	if (evutil_timercmp(&ev->ev_timeout, &now, <=)) {
 		evutil_timerclear(tv);
 		goto out;
 	}
 
-	evutil_timersub(&ev->ev_timeout, &now, tv);
+	// todo: 2. 推进时间
+	evutil_timersub(&ev->ev_timeout, &now, tv); // 重算tv
 
 	EVUTIL_ASSERT(tv->tv_sec >= 0);
 	EVUTIL_ASSERT(tv->tv_usec >= 0);
@@ -3377,6 +3385,7 @@ event_queue_insert_active_later(struct event_base *base, struct event_callback *
 	TAILQ_INSERT_TAIL(&base->active_later_queue, evcb, evcb_active_next);
 }
 
+// todo: add event to commmon_timeout_list or min_heap in base
 static void
 event_queue_insert_timeout(struct event_base *base, struct event *ev)
 {
@@ -3393,8 +3402,7 @@ event_queue_insert_timeout(struct event_base *base, struct event *ev)
 	ev->ev_flags |= EVLIST_TIMEOUT;
 
 	if (is_common_timeout(&ev->ev_timeout, base)) {
-		struct common_timeout_list *ctl =
-				get_common_timeout_list(base, &ev->ev_timeout);
+		struct common_timeout_list *ctl = get_common_timeout_list(base, &ev->ev_timeout);
 		insert_common_timeout_inorder(ctl, ev);
 	} else {
 		min_heap_push_(&base->timeheap, ev);
@@ -3581,6 +3589,7 @@ evthread_notify_drain_default(evutil_socket_t fd, short what, void *arg)
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
 }
 
+// init base中和notify相关的部分
 int
 evthread_make_base_notifiable(struct event_base *base)
 {
@@ -3624,8 +3633,8 @@ evthread_make_base_notifiable_nolock_(struct event_base *base)
 	} else
 #endif
 	if (evutil_make_internal_pipe_(base->th_notify_fd) == 0) {
-		notify = evthread_notify_base_default;
-		cb = evthread_notify_drain_default;
+		notify = evthread_notify_base_default; // default cb when signal arrive
+		cb = evthread_notify_drain_default; // default cb when fd-event arrive
 	} else {
 		return -1;
 	}

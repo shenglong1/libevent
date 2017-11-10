@@ -167,10 +167,10 @@ struct common_timeout_list {
 	struct event_list events;
 	/* 'magic' timeval used to indicate the duration of events in this
 	 * queue. */
-	struct timeval duration;
+	struct timeval duration; // 本链表的公共时长
 	/* Event that triggers whenever one of the events in the queue is
 	 * ready to activate */
-	struct event timeout_event;
+	struct event timeout_event; // 本队列中已超时的最小时间event, 这个会放到min_heap中排序
 	/* The event_base that this timeout list is part of */
 	struct event_base *base;
 };
@@ -276,7 +276,8 @@ struct event_base {
 
 	/** An array of common_timeout_list* for all of the common timeout
 	 * values we know. */
-	struct common_timeout_list **common_timeout_queues;
+	// timeout event的注册列表
+	struct common_timeout_list **common_timeout_queues; // value=event
 	/** The number of entries used in common_timeout_queues */
 	int n_common_timeouts;
 	/** The total size of common_timeout_queues. */
@@ -290,11 +291,12 @@ struct event_base {
 	struct event_signal_map sigmap;
 
 	/** Priority queue of events with timeouts. */
-	struct min_heap timeheap; // 所有event都对应一个超时
+	// 所有common_timeout_list中已超时的event构成的排序
+	struct min_heap timeheap; // 所有event都对应一个超时, value=event
 
 	/** Stored timeval: used to avoid calling gettimeofday/clock_gettime
 	 * too often. */
-	struct timeval tv_cache;
+	struct timeval tv_cache; // 为了替换gettimeofday
 
 	struct evutil_monotonic_timer monotonic_timer;
 
@@ -342,7 +344,7 @@ struct event_base {
 	 * thread. */
 	struct event th_notify;
 	/** A function used to wake up the main thread from another thread. */
-	int (*th_notify_fn)(struct event_base *base);
+	int (*th_notify_fn)(struct event_base *base); // 提供给外部发起notify的接口
 
 	/** Saved seed for weak random number generator. Some backends use
 	 * this to produce fairness among sockets. Protected by th_base_lock. */

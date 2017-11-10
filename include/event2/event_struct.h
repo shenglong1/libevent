@@ -156,7 +156,7 @@ struct event {
 		} ev_signal;
 	} ev_;
 
-	short ev_events;
+	short ev_events; // flags
 	short ev_res;		/* result passed to event callback */
 	struct timeval ev_timeout;
 };
