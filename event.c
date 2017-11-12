@@ -1360,6 +1360,7 @@ event_signal_closure(struct event_base *base, struct event *ev)
  * of index into the event_base's aray of common timeouts.
  */
 
+// tv_usec的低20位用于实际微秒数，后8位是common_timeout_list下标标志，最高4位是5(MAGIC)
 #define MICROSECONDS_MASK       COMMON_TIMEOUT_MICROSECONDS_MASK
 #define COMMON_TIMEOUT_IDX_MASK 0x0ff00000
 #define COMMON_TIMEOUT_IDX_SHIFT 20
@@ -1413,6 +1414,7 @@ common_timeout_ok(const struct timeval *tv,
 
 /* Add the timeout for the first event in given common timeout list to the
  * event_base's minheap. */
+// 将一个common event 去除common标志，放入min_heap
 static void
 common_timeout_schedule(struct common_timeout_list *ctl,
 												const struct timeval *now, struct event *head)
@@ -1425,6 +1427,7 @@ common_timeout_schedule(struct common_timeout_list *ctl,
 /* Callback: invoked when the timeout for a common timeout queue triggers.
  * This means that (at least) the first event in that queue should be run,
  * and the timeout should be rescheduled if there are more events. */
+// todo: 超时event标准cb
 static void
 common_timeout_callback(evutil_socket_t fd, short what, void *arg)
 {
@@ -1451,6 +1454,7 @@ common_timeout_callback(evutil_socket_t fd, short what, void *arg)
 #define MAX_COMMON_TIMEOUTS 256
 
 // malloc and init base.common_timeout_list
+// 找到(或新建common队列节点)普通duration的插入位置标准duration, 返回公共标准duration
 const struct timeval *
 event_base_init_common_timeout(struct event_base *base,
 															 const struct timeval *duration)
@@ -1461,29 +1465,34 @@ event_base_init_common_timeout(struct event_base *base,
 	struct common_timeout_list *new_ctl;
 
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
-	// todo: ? fix time ?
-	if (duration->tv_usec > 1000000) {
+	// todo: 将duration修正为tv_usec < 999999 的
+	if (duration->tv_usec > 1000000) { // 若大于微秒的最大值，则判断是否已经是个标准common时间
 		memcpy(&tv, duration, sizeof(struct timeval));
 		if (is_common_timeout(duration, base))
-			tv.tv_usec &= MICROSECONDS_MASK;
+			tv.tv_usec &= MICROSECONDS_MASK; // 取低20位
 		tv.tv_sec += tv.tv_usec / 1000000;
 		tv.tv_usec %= 1000000;
 		duration = &tv;
 	}
 	for (i = 0; i < base->n_common_timeouts; ++i) {
+    // 找到和duration时间相同的common节点，返回其common时间(带标志)的duration
 		const struct common_timeout_list *ctl = base->common_timeout_queues[i];
-		if (duration->tv_sec == ctl->duration.tv_sec && duration->tv_usec == (ctl->duration.tv_usec & MICROSECONDS_MASK)) {
+		if (duration->tv_sec == ctl->duration.tv_sec &&
+				duration->tv_usec == (ctl->duration.tv_usec & MICROSECONDS_MASK)) {
 			EVUTIL_ASSERT(is_common_timeout(&ctl->duration, base));
 			result = &ctl->duration;
 			goto done;
 		}
 	}
+	// 以下都是在已有队列中没有找到合适下标
 	if (base->n_common_timeouts == MAX_COMMON_TIMEOUTS) {
 		event_warnx("%s: Too many common timeouts already in use; "
 										"we only support %d per event_base", __func__,
 								MAX_COMMON_TIMEOUTS);
 		goto done;
 	}
+	// 以下是create/init a common_timeout_list node
+	// todo: common_timeout_list.event init 成一个公共的cb/cb_args
 	if (base->n_common_timeouts_allocated == base->n_common_timeouts) {
 		int n = base->n_common_timeouts < 16 ? 16 :
 						base->n_common_timeouts*2;
@@ -1497,7 +1506,7 @@ event_base_init_common_timeout(struct event_base *base,
 		base->n_common_timeouts_allocated = n;
 		base->common_timeout_queues = newqueues;
 	}
-	new_ctl = mm_calloc(1, sizeof(struct common_timeout_list));
+	new_ctl = mm_calloc(1, sizeof(struct common_timeout_list)); // 分配一个新节点
 	if (!new_ctl) {
 		event_warn("%s: calloc",__func__);
 		goto done;
@@ -1506,7 +1515,9 @@ event_base_init_common_timeout(struct event_base *base,
 	new_ctl->duration.tv_sec = duration->tv_sec;
 	new_ctl->duration.tv_usec =
 			duration->tv_usec | COMMON_TIMEOUT_MAGIC |
-			(base->n_common_timeouts << COMMON_TIMEOUT_IDX_SHIFT);
+			(base->n_common_timeouts << COMMON_TIMEOUT_IDX_SHIFT); // todo: 这里就是一个标准duration的结构
+
+	// todo: init common_timeout_list node, 超时event回调init
 	evtimer_assign(&new_ctl->timeout_event, base,
 								 common_timeout_callback, new_ctl);
 	new_ctl->timeout_event.ev_flags |= EVLIST_INTERNAL;
@@ -2697,14 +2708,14 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 #ifdef USE_REINSERT_TIMEOUT
 		event_queue_reinsert_timeout(base, ev, was_common, common_timeout, old_timeout_idx);
 #else
-		event_queue_insert_timeout(base, ev); // 一个event_timeout加入base
+		event_queue_insert_timeout(base, ev); // 一个event_timeout加入base, common/heap
 #endif
 
 		if (common_timeout) {
-			// 找到当前ev.ev_timeout所在的common_timeout_list
+			// 找到刚刚插入的ev.ev_timeout所在的common_timeout_list
 			struct common_timeout_list *ctl = get_common_timeout_list(base, &ev->ev_timeout);
 			if (ev == TAILQ_FIRST(&ctl->events)) {
-				common_timeout_schedule(ctl, &now, ev);
+				common_timeout_schedule(ctl, &now, ev); // recursive, put to min_heap
 			}
 		} else {
 			// 检查min_heap.top 是否超时

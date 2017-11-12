@@ -170,7 +170,7 @@ struct common_timeout_list {
 	struct timeval duration; // 本链表的公共时长
 	/* Event that triggers whenever one of the events in the queue is
 	 * ready to activate */
-	struct event timeout_event; // 本队列中已超时的最小时间event, 这个会放到min_heap中排序
+	struct event timeout_event; // 本node的公共event.timeval/cb/cb_arg
 	/* The event_base that this timeout list is part of */
 	struct event_base *base;
 };
@@ -277,6 +277,7 @@ struct event_base {
 	/** An array of common_timeout_list* for all of the common timeout
 	 * values we know. */
 	// timeout event的注册列表
+  // 并非duration升序排列，而是按照插入顺序
 	struct common_timeout_list **common_timeout_queues; // value=event
 	/** The number of entries used in common_timeout_queues */
 	int n_common_timeouts;
@@ -336,7 +337,7 @@ struct event_base {
 	/* Notify main thread to wake up break, etc. */
 	/** True if the base already has a pending notify, and we don't need
 	 * to add any more. */
-	int is_notify_pending;
+	int is_notify_pending; // 是否在wait
 	/** A socketpair used by some th_notify functions to wake up the main
 	 * thread. */
 	evutil_socket_t th_notify_fd[2];
