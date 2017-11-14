@@ -114,7 +114,7 @@ struct evbuffer
     @see evbuffer_ptr_set()
  */
 struct evbuffer_ptr {
-	ev_ssize_t pos;
+	ev_ssize_t pos; // 全局位置,绝对位置
 
 	/* Do not alter or rely on the values of fields: they are for internal
 	 * use */

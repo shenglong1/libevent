@@ -453,6 +453,7 @@ EVENT2_EXPORT_SYMBOL
 int evutil_make_internal_pipe_(evutil_socket_t fd[2]);
 evutil_socket_t evutil_eventfd_(unsigned initval, int flags);
 
+// connfd opt
 #ifdef SOCK_NONBLOCK
 #define EVUTIL_SOCK_NONBLOCK SOCK_NONBLOCK
 #else

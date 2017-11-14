@@ -99,7 +99,7 @@ struct evbuffer {
 	struct evbuffer_chain **last_with_datap;
 
 	/** Total amount of bytes stored in all chains.*/
-	size_t total_len;
+	size_t total_len; // capacity
 
 	/** Number of bytes we have added to the buffer since we last tried to
 	 * invoke callbacks. */
@@ -177,12 +177,12 @@ struct evbuffer_chain {
 
 	/** unused space at the beginning of buffer or an offset into a
 	 * file for sendfile buffers. */
-	ev_misalign_t misalign;
+	ev_misalign_t misalign; // buffer头部空隙
 
 	/** Offset into buffer + misalign at which to start writing.
 	 * In other words, the total number of bytes actually stored
 	 * in buffer. */
-	size_t off;
+	size_t off; // 真实数据长度
 
 	/** Set if special handling is required for this chain */
 	unsigned flags;

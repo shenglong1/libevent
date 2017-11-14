@@ -55,8 +55,8 @@ extern "C" {
 #include <event2/event_struct.h>
 
 struct event_watermark {
-	size_t low;
-	size_t high;
+	size_t low; // 表示低于这个值就不能从其中拿数据
+	size_t high; // 表示高于这个值就不能写到其中
 };
 
 /**
@@ -72,7 +72,7 @@ struct bufferevent {
 	struct event_base *ev_base;
 	/** Pointer to a table of function pointers to set up how this
 	    bufferevent behaves. */
-	const struct bufferevent_ops *be_ops;
+	const struct bufferevent_ops *be_ops; // fn struct
 
 	/** A read event that triggers when a timeout has happened or a socket
 	    is ready to read data.  Only used by some subtypes of
@@ -85,16 +85,16 @@ struct bufferevent {
 
 	/** An input buffer. Only the bufferevent is allowed to add data to
 	    this buffer, though the user is allowed to drain it. */
-	struct evbuffer *input;
+	struct evbuffer *input; // read buffer
 
 	/** An input buffer. Only the bufferevent is allowed to drain data
 	    from this buffer, though the user is allowed to add it. */
-	struct evbuffer *output;
+	struct evbuffer *output; // write buffer
 
 	struct event_watermark wm_read;
 	struct event_watermark wm_write;
 
-	bufferevent_data_cb readcb;
+	bufferevent_data_cb readcb; // 读取数据时的user_cb
 	bufferevent_data_cb writecb;
 	/* This should be called 'eventcb', but renaming it would break
 	 * backward compatibility */

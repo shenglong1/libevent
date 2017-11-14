@@ -2346,6 +2346,8 @@ event_priority_set(struct event *ev, int pri)
  * Checks if a specific event is pending or scheduled.
  */
 
+// todo: ???
+// 该函数的作用是检查某个事件(由第二个参数指定)是否处于未决或者激活状态。
 int
 event_pending(const struct event *ev, short event, struct timeval *tv)
 {
@@ -2407,6 +2409,7 @@ event_get_assignment(const struct event *event, struct event_base **base_out, ev
 		*arg_out = event->ev_arg;
 }
 
+// event 操作函数
 size_t
 event_get_struct_event_size(void)
 {
@@ -2872,6 +2875,7 @@ event_del_nolock_(struct event *ev, int blocking)
 	return (res);
 }
 
+// 手动激活
 void
 event_active(struct event *ev, int res, short ncalls)
 {

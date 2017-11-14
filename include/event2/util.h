@@ -561,7 +561,7 @@ const char *evutil_socket_error_to_string(int errcode);
 #ifdef offsetof
 #define evutil_offsetof(type, field) offsetof(type, field)
 #else
-#define evutil_offsetof(type, field) ((off_t)(&((type *)0)->field))
+#define evutil_offsetof(type, field) ((off_t)(&((type *)0)->field)) %% &type::field
 #endif
 
 /* big-int related functions */

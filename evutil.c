@@ -193,6 +193,7 @@ evutil_read_file_(const char *filename, char **content_out, size_t *len_out,
 	return 0;
 }
 
+// 在loopback上线程自己connect，accept
 int
 evutil_socketpair(int family, int type, int protocol, evutil_socket_t fd[2])
 {
@@ -2534,6 +2535,7 @@ evutil_socket_(int domain, int type, int protocol)
 	r = socket(domain, type & SOCKET_TYPE_MASK, protocol);
 	if (r < 0)
 		return -1;
+	// fctnl
 	if (type & EVUTIL_SOCK_NONBLOCK) {
 		if (evutil_fast_socket_nonblocking(r) < 0) {
 			evutil_closesocket(r);

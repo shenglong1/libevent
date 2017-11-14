@@ -76,20 +76,20 @@ struct evconnlistener_ops {
 };
 
 struct evconnlistener {
-	const struct evconnlistener_ops *ops;
-	void *lock;
-	evconnlistener_cb cb;
-	evconnlistener_errorcb errorcb;
-	void *user_data;
-	unsigned flags;
-	short refcnt;
-	int accept4_flags;
-	unsigned enabled : 1;
+	const struct evconnlistener_ops *ops; // backend
+	void *lock; // mutex
+	evconnlistener_cb cb; // real cb
+	evconnlistener_errorcb errorcb; // real error cb
+	void *user_data; // cb_args
+	unsigned flags; // lfd opt
+	short refcnt; // 1, 引用计数
+	int accept4_flags; // connfd opt
+	unsigned enabled : 1; // 是否开启accept
 };
 
 struct evconnlistener_event {
 	struct evconnlistener base;
-	struct event listener;
+	struct event listener; // listen_fd + default_cb
 };
 
 #ifdef _WIN32
@@ -145,16 +145,18 @@ listener_decref_and_unlock(struct evconnlistener *listener)
 }
 
 static const struct evconnlistener_ops evconnlistener_event_ops = {
+		// handle evconnlistener
 	event_listener_enable,
 	event_listener_disable,
 	event_listener_destroy,
 	NULL, /* shutdown */
-	event_listener_getfd,
+	event_listener_getfd, // return listen_fd
 	event_listener_getbase
 };
 
 static void listener_read_cb(evutil_socket_t, short, void *);
 
+// listen, create fd-event
 struct evconnlistener *
 evconnlistener_new(struct event_base *base,
     evconnlistener_cb cb, void *ptr, unsigned flags, int backlog,
@@ -200,15 +202,16 @@ evconnlistener_new(struct event_base *base,
 		EVTHREAD_ALLOC_LOCK(lev->base.lock, EVTHREAD_LOCKTYPE_RECURSIVE);
 	}
 
-	event_assign(&lev->listener, base, fd, EV_READ|EV_PERSIST,
-	    listener_read_cb, lev);
+	event_assign(&lev->listener, base, fd, EV_READ|EV_PERSIST, listener_read_cb, lev);
 
 	if (!(flags & LEV_OPT_DISABLED))
-	    evconnlistener_enable(&lev->base);
+	    evconnlistener_enable(&lev->base); // lfd add to base
 
 	return &lev->base;
 }
 
+// todo: socket/bind/listen/accept
+// todo: 建立一套完整的lfd-event-dcb -> accept-user_cb, 并event_add(lfd)
 struct evconnlistener *
 evconnlistener_new_bind(struct event_base *base, evconnlistener_cb cb,
     void *ptr, unsigned flags, int backlog, const struct sockaddr *sa,
@@ -253,6 +256,7 @@ evconnlistener_new_bind(struct event_base *base, evconnlistener_cb cb,
 			goto err;
 	}
 
+	// listen, create fd-event
 	listener = evconnlistener_new(base, cb, ptr, flags, backlog, fd);
 	if (!listener)
 		goto err;
@@ -263,6 +267,7 @@ err:
 	return NULL;
 }
 
+// 显示调用
 void
 evconnlistener_free(struct evconnlistener *lev)
 {
@@ -387,6 +392,7 @@ evconnlistener_set_error_cb(struct evconnlistener *lev,
 	UNLOCK(lev);
 }
 
+// listen_fd signled, accept
 static void
 listener_read_cb(evutil_socket_t fd, short what, void *p)
 {
@@ -418,10 +424,12 @@ listener_read_cb(evutil_socket_t fd, short what, void *p)
 		cb = lev->cb;
 		user_data = lev->user_data;
 		UNLOCK(lev);
+		// 在这个范围内有可能evconnlistener已被更改, 外部调用了evconnlistener_free
 		cb(lev, new_fd, (struct sockaddr*)&ss, (int)socklen,
 		    user_data);
 		LOCK(lev);
 		if (lev->refcnt == 1) {
+      // 外部其他线程call evconnlistener_free
 			int freed = listener_decref_and_unlock(lev);
 			EVUTIL_ASSERT(freed);
 

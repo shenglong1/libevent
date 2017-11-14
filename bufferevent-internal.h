@@ -151,12 +151,13 @@ struct bufferevent_rate_limit {
 
 /** Parts of the bufferevent structure that are shared among all bufferevent
  * types, but not exposed in bufferevent_struct.h. */
+// 相当于bufferevent父类
 struct bufferevent_private {
 	/** The underlying bufferevent structure. */
 	struct bufferevent bev;
 
 	/** Evbuffer callback to enforce watermarks on input. */
-	struct evbuffer_cb_entry *read_watermarks_cb;
+	struct evbuffer_cb_entry *read_watermarks_cb; // 水位变化时的cb
 
 	/** If set, we should free the lock when we free the bufferevent. */
 	unsigned own_lock : 1;
@@ -179,7 +180,7 @@ struct bufferevent_private {
 	/** If set, read is suspended until one or more conditions are over.
 	 * The actual value here is a bitfield of those conditions; see the
 	 * BEV_SUSPEND_* flags above. */
-	bufferevent_suspend_flags read_suspended;
+	bufferevent_suspend_flags read_suspended; // fd的read 触发被挂起，暂时不响应
 
 	/** If set, writing is suspended until one or more conditions are over.
 	 * The actual value here is a bitfield of those conditions; see the

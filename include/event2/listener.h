@@ -60,6 +60,7 @@ typedef void (*evconnlistener_cb)(struct evconnlistener *, evutil_socket_t, stru
  */
 typedef void (*evconnlistener_errorcb)(struct evconnlistener *, void *);
 
+// listenfd opt
 /** Flag: Indicates that we should not make incoming sockets nonblocking
  * before passing them to the callback. */
 #define LEV_OPT_LEAVE_SOCKETS_BLOCKING	(1u<<0)

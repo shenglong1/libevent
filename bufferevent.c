@@ -63,6 +63,7 @@
 static void bufferevent_cancel_all_(struct bufferevent *bev);
 static void bufferevent_finalize_cb_(struct event_callback *evcb, void *arg_);
 
+// sockfd触发，但readbuff不足，挂起fd read触发
 void
 bufferevent_suspend_read_(struct bufferevent *bufev, bufferevent_suspend_flags what)
 {
@@ -287,6 +288,7 @@ bufferevent_trigger_event(struct bufferevent *bufev, short what, int options)
 	bufferevent_decref_and_unlock_(bufev);
 }
 
+// 初始化一个完整的bufferevent_private
 int
 bufferevent_init_common_(struct bufferevent_private *bufev_private,
     struct event_base *base,
@@ -363,6 +365,7 @@ bufferevent_init_common_(struct bufferevent_private *bufev_private,
 	return 0;
 }
 
+// 设置bufferevent.cb
 void
 bufferevent_setcb(struct bufferevent *bufev,
     bufferevent_data_cb readcb, bufferevent_data_cb writecb,
@@ -479,6 +482,7 @@ bufferevent_enable(struct bufferevent *bufev, short event)
 	return r;
 }
 
+// set bufferevent.timeout
 int
 bufferevent_set_timeouts(struct bufferevent *bufev,
 			 const struct timeval *tv_read,
@@ -566,6 +570,7 @@ bufferevent_disable(struct bufferevent *bufev, short event)
  * Sets the water marks
  */
 
+// 设置bufferevent_private.watermark_cb, bufferevent.evbuffer.input.cb
 void
 bufferevent_setwatermark(struct bufferevent *bufev, short events,
     size_t lowmark, size_t highmark)
@@ -590,9 +595,7 @@ bufferevent_setwatermark(struct bufferevent *bufev, short events,
 
 			if (bufev_private->read_watermarks_cb == NULL) {
 				bufev_private->read_watermarks_cb =
-				    evbuffer_add_cb(bufev->input,
-						    bufferevent_inbuf_wm_cb,
-						    bufev);
+				    evbuffer_add_cb(bufev->input, bufferevent_inbuf_wm_cb, bufev);
 			}
 			evbuffer_cb_set_flags(bufev->input,
 				      bufev_private->read_watermarks_cb,
@@ -806,6 +809,7 @@ bufferevent_incref(struct bufferevent *bufev)
 	BEV_UNLOCK(bufev);
 }
 
+// 把base.lock 赋值给bufferevent 和evbuffer
 int
 bufferevent_enable_locking_(struct bufferevent *bufev, void *lock)
 {
@@ -832,10 +836,12 @@ bufferevent_enable_locking_(struct bufferevent *bufev, void *lock)
 		BEV_UPCAST(bufev)->lock = lock;
 		BEV_UPCAST(bufev)->own_lock = 0;
 	}
+	// give lock to evbuffer
 	evbuffer_enable_locking(bufev->input, lock);
 	evbuffer_enable_locking(bufev->output, lock);
 
 	if (underlying && !BEV_UPCAST(underlying)->lock)
+		// giv lock to bufferevent
 		bufferevent_enable_locking_(underlying, lock);
 
 	return 0;
@@ -968,6 +974,7 @@ bufferevent_generic_adj_timeouts_(struct bufferevent *bev)
 	return 0;
 }
 
+// 修改或删除bufferevent.ev_read/ev_write的超时
 int
 bufferevent_generic_adj_existing_timeouts_(struct bufferevent *bev)
 {

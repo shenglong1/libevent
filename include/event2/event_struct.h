@@ -105,6 +105,7 @@ struct name {								\
 
 struct event;
 
+// cb standard
 struct event_callback {
 	TAILQ_ENTRY(event_callback) evcb_active_next;
 	short evcb_flags;

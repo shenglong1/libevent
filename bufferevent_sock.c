@@ -91,7 +91,7 @@ const struct bufferevent_ops bufferevent_ops_socket = {
 	be_socket_disable,
 	NULL, /* unlink */
 	be_socket_destruct,
-	bufferevent_generic_adj_existing_timeouts_,
+	bufferevent_generic_adj_existing_timeouts_, // 修改或删除bufferevent.ev_read/ev_write的超时
 	be_socket_flush,
 	be_socket_ctrl,
 };
@@ -121,6 +121,8 @@ bufferevent_socket_set_conn_address(struct bufferevent_private *bev_p,
 	memcpy(&bev_p->conn_address, addr, addrlen);
 }
 
+// bufferevent.evbuffer_w.cb
+// 当user主动发起write时，写入到evbuffer，触发evbuffer.cb, add event监听fd可写
 static void
 bufferevent_socket_outbuf_cb(struct evbuffer *buf,
     const struct evbuffer_cb_info *cbinfo,
@@ -142,6 +144,10 @@ bufferevent_socket_outbuf_cb(struct evbuffer *buf,
 	}
 }
 
+// event.cb call bufferevent中标准的user_readcb
+// 1. 根据watermark调整读取数据量；
+// 2. 读取fd -> evbuff;
+// 3. invoke bufferevent.readcb
 static void
 bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 {
@@ -173,6 +179,7 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 		howmuch = bufev->wm_read.high - evbuffer_get_length(input);
 		/* we somehow lowered the watermark, stop reading */
 		if (howmuch <= 0) {
+      // 当前已经超过了highmark
 			bufferevent_wm_suspend_read(bufev);
 			goto done;
 		}
@@ -185,6 +192,7 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 		goto done;
 
 	evbuffer_unfreeze(input, 0);
+  // data: fd -> evbuffer
 	res = evbuffer_read(input, fd, (int)howmuch); /* XXXX evbuffer_read would do better to take and return ev_ssize_t */
 	evbuffer_freeze(input, 0);
 
@@ -206,9 +214,11 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 	if (res <= 0)
 		goto error;
 
+	// 速率相关操作
 	bufferevent_decrement_read_buckets_(bufev_p, res);
 
 	/* Invoke the user callback - must always be called last */
+  // invoke bufferevent.readcb
 	bufferevent_trigger_nolock_(bufev, EV_READ, 0);
 
 	goto done;
@@ -224,6 +234,10 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 	bufferevent_decref_and_unlock_(bufev);
 }
 
+// event.cb: call bufferevent中标准的user_writecb
+// 两个功能：
+// 1. 监听write event, evbuff -> fd, call user.cb
+// 2. 监听connect 结果, call bufferevent.errorcb
 static void
 bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 {
@@ -245,6 +259,7 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 		goto error;
 	}
 	if (bufev_p->connecting) {
+		// todo: 用于bufferevent_socket_connect调用后监听写事件来看connect是否成功
 		int c = evutil_socket_finished_connecting_(fd);
 		/* we need to fake the error if the connection was refused
 		 * immediately - usually connection to localhost on BSD */
@@ -258,6 +273,7 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 
 		bufev_p->connecting = 0;
 		if (c < 0) {
+			// 连接都断了
 			event_del(&bufev->ev_write);
 			event_del(&bufev->ev_read);
 			bufferevent_run_eventcb_(bufev, BEV_EVENT_ERROR, 0);
@@ -274,8 +290,8 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 				goto done;
 			}
 #endif
-			bufferevent_run_eventcb_(bufev,
-					BEV_EVENT_CONNECTED, 0);
+      // todo: ???
+			bufferevent_run_eventcb_(bufev, BEV_EVENT_CONNECTED, 0);
 			if (!(bufev->enabled & EV_WRITE) ||
 			    bufev_p->write_suspended) {
 				event_del(&bufev->ev_write);
@@ -311,6 +327,7 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 		bufferevent_decrement_write_buckets_(bufev_p, res);
 	}
 
+	// notice: 全部写到了fd
 	if (evbuffer_get_length(bufev->output) == 0) {
 		event_del(&bufev->ev_write);
 	}
@@ -339,9 +356,9 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 	bufferevent_decref_and_unlock_(bufev);
 }
 
+// todo: create a bufferevent_private
 struct bufferevent *
-bufferevent_socket_new(struct event_base *base, evutil_socket_t fd,
-    int options)
+bufferevent_socket_new(struct event_base *base, evutil_socket_t fd, int options)
 {
 	struct bufferevent_private *bufev_p;
 	struct bufferevent *bufev;
@@ -354,6 +371,8 @@ bufferevent_socket_new(struct event_base *base, evutil_socket_t fd,
 	if ((bufev_p = mm_calloc(1, sizeof(struct bufferevent_private)))== NULL)
 		return NULL;
 
+	// bufferevent_private.deferred_cb, evbuffer
+	// bufferevent_run_deferred_callbacks_locked
 	if (bufferevent_init_common_(bufev_p, base, &bufferevent_ops_socket,
 				    options) < 0) {
 		mm_free(bufev_p);
@@ -362,15 +381,18 @@ bufferevent_socket_new(struct event_base *base, evutil_socket_t fd,
 	bufev = &bufev_p->bev;
 	evbuffer_set_flags(bufev->output, EVBUFFER_FLAG_DRAINS_TO_FD);
 
+	// event.cb
 	event_assign(&bufev->ev_read, bufev->ev_base, fd,
 	    EV_READ|EV_PERSIST|EV_FINALIZE, bufferevent_readcb, bufev);
 	event_assign(&bufev->ev_write, bufev->ev_base, fd,
 	    EV_WRITE|EV_PERSIST|EV_FINALIZE, bufferevent_writecb, bufev);
 
-	evbuffer_add_cb(bufev->output, bufferevent_socket_outbuf_cb, bufev);
+	// evbuffer.cb
+	evbuffer_add_cb(bufev->output, bufferevent_socket_outbuf_cb, bufev); // 加一个evbuffer_cb_entry到evbuffer.callback
 
-	evbuffer_freeze(bufev->input, 0);
-	evbuffer_freeze(bufev->output, 1);
+	// 关闭fd 对evbuf的读写
+	evbuffer_freeze(bufev->input, 0); // 读缓冲锁住尾部
+	evbuffer_freeze(bufev->output, 1); // 写缓冲锁住头部
 
 	return bufev;
 }
@@ -427,8 +449,10 @@ bufferevent_socket_connect(struct bufferevent *bev,
 		    EV_WRITE|EV_PERSIST|EV_FINALIZE, bufferevent_writecb, bev);
 	}
 #endif
+  // 下面监听fd 可写事件来看connect是否完成
 	bufferevent_setfd(bev, fd);
 	if (r == 0) {
+		// 暂时没连上，添加监听
 		if (! be_socket_enable(bev, EV_WRITE)) {
 			bufev_p->connecting = 1;
 			result = 0;
@@ -436,6 +460,7 @@ bufferevent_socket_connect(struct bufferevent *bev,
 		}
 	} else if (r == 1) {
 		/* The connect succeeded already. How very BSD of it. */
+		// 已连上，直接active
 		result = 0;
 		bufev_p->connecting = 1;
 		event_active(&bev->ev_write, EV_WRITE, 1);
