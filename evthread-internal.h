@@ -181,6 +181,7 @@ EVLOCK_TRY_LOCK_(void *lock)
 
 #elif ! defined(EVENT__DISABLE_THREAD_SUPPORT)
 
+// 使用evthread.c中的interface来操作全局lock, 调用者负责保存lock cond
 unsigned long evthreadimpl_get_id_(void);
 int evthreadimpl_is_lock_debugging_enabled_(void);
 void *evthreadimpl_lock_alloc_(unsigned locktype);

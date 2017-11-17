@@ -133,6 +133,7 @@ struct event_base *event_global_current_base_ = NULL;
 static void *event_self_cbarg_ptr_ = NULL;
 
 /* Prototypes */
+// active queue interface
 static void	event_queue_insert_active(struct event_base *, struct event_callback *);
 static void	event_queue_insert_active_later(struct event_base *, struct event_callback *);
 static void	event_queue_insert_timeout(struct event_base *, struct event *);
@@ -143,7 +144,9 @@ static void	event_queue_remove_timeout(struct event_base *, struct event *);
 static void	event_queue_remove_inserted(struct event_base *, struct event *);
 static void event_queue_make_later_events_active(struct event_base *base);
 
+// 构造完整的base通知机制，并把notify event注册到io_map
 static int evthread_make_base_notifiable_nolock_(struct event_base *base);
+// 根据flag，从注册队列，timeout队列，或激活队列中彻底删除event
 static int event_del_(struct event *ev, int blocking);
 
 #ifdef USE_REINSERT_TIMEOUT
@@ -156,9 +159,11 @@ static int	event_haveevents(struct event_base *);
 static int	event_process_active(struct event_base *);
 
 static int	timeout_next(struct event_base *, struct timeval **);
-static void	timeout_process(struct event_base *);
+static void	timeout_process(struct event_base *); // move event from min_heap to activequeue
 
+// process一个signal触发的event
 static inline void	event_signal_closure(struct event_base *, struct event *ev);
+// 处理一个PERSIST的超时event ???
 static inline void	event_persist_closure(struct event_base *, struct event *ev);
 
 static int	evthread_notify_base(struct event_base *base);
@@ -1327,7 +1332,7 @@ event_signal_closure(struct event_base *base, struct event *ev)
 	if (ncalls != 0)
 		ev->ev_pncalls = &ncalls;
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
-	while (ncalls) {
+	while (ncalls) { // 将event中所有触发的信号都call一遍
 		ncalls--;
 		ev->ev_ncalls = ncalls;
 		if (ncalls == 0)
@@ -1534,6 +1539,7 @@ event_base_init_common_timeout(struct event_base *base,
 	return result;
 }
 
+// 处理一个非signal的PERSIST的超时event ???
 /* Closure function invoked when we're activating a persistent event. */
 static inline void
 event_persist_closure(struct event_base *base, struct event *ev)
@@ -1584,7 +1590,7 @@ event_persist_closure(struct event_base *base, struct event *ev)
 			evutil_timeradd(&now, &delay, &run_at);
 		}
 		run_at.tv_usec |= usec_mask;
-		event_add_nolock_(ev, &run_at, 1);
+		event_add_nolock_(ev, &run_at, 1); // rebind new time
 	}
 
 	// Save our callback before we release the lock
@@ -1964,7 +1970,7 @@ event_base_loop(struct event_base *base, int flags)
 			goto done;
 		}
 
-		event_queue_make_later_events_active(base);
+		event_queue_make_later_events_active(base); // move event from active_later to activequeue
 
 		clear_time_cache(base);
 
@@ -2746,6 +2752,7 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 	return (res);
 }
 
+// 根据flag，从注册队列，timeout队列，或激活队列中彻底删除event
 static int
 event_del_(struct event *ev, int blocking)
 {
@@ -2789,6 +2796,7 @@ event_del_noblock(struct event *ev)
  * EVEN_IF_FINALIZING} values. See those for more information.
  */
 // 更新base状态, 从map中删除，notify
+// 根据flag，从注册队列，timeout队列，或激活队列中彻底删除event
 int
 event_del_nolock_(struct event *ev, int blocking)
 {
@@ -2982,6 +2990,7 @@ event_callback_activate_(struct event_base *base,
 	return r;
 }
 
+// insert event_callback to activequeue
 int
 event_callback_activate_nolock_(struct event_base *base,
 																struct event_callback *evcb)
@@ -3383,6 +3392,7 @@ event_queue_insert_active(struct event_base *base, struct event_callback *evcb)
 										evcb, evcb_active_next);
 }
 
+// 唯一的不同是event_callback.evcb_flags加上LATER标志
 static void
 event_queue_insert_active_later(struct event_base *base, struct event_callback *evcb)
 {
@@ -3618,6 +3628,7 @@ evthread_make_base_notifiable(struct event_base *base)
 	return r;
 }
 
+// 构造完整的base通知机制，并把notify event注册到io_map
 static int
 evthread_make_base_notifiable_nolock_(struct event_base *base)
 {

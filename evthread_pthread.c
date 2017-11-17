@@ -23,6 +23,9 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+/*
+ * 仅是提供了几个简单自定义fn，并set to global
+*/
 #include "event2/event-config.h"
 #include "evconfig-private.h"
 

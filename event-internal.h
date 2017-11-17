@@ -241,7 +241,7 @@ struct event_base {
 	 * events. */
 	int event_gotterm;
 	/** Set if we should terminate the loop immediately */
-	int event_break;
+	int event_break; // ???
 	/** Set if we should start a new instance of the loop immediately. */
 	int event_continue;
 
@@ -337,13 +337,13 @@ struct event_base {
 	/* Notify main thread to wake up break, etc. */
 	/** True if the base already has a pending notify, and we don't need
 	 * to add any more. */
-	int is_notify_pending; // 是否在wait
+	int is_notify_pending; // 是否在wait,0 notify 已经被接受或没有notify， 1 notify，但main loop还未响应
 	/** A socketpair used by some th_notify functions to wake up the main
 	 * thread. */
 	evutil_socket_t th_notify_fd[2];
 	/** An event used by some th_notify functions to wake up the main
 	 * thread. */
-	struct event th_notify;
+	struct event th_notify; // 专门开一个event来监听外部线程通知
 	/** A function used to wake up the main thread from another thread. */
 	int (*th_notify_fn)(struct event_base *base); // 提供给外部发起notify的接口
 

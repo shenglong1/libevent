@@ -24,6 +24,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * 纯方法，保存fnstruct cbs,提供lock的四个方法，alloc,free,lock,unlock
+*/
+
 #include "event2/event-config.h"
 #include "evconfig-private.h"
 
@@ -46,16 +50,18 @@
 #endif
 
 #ifndef EVENT__DISABLE_DEBUG_MODE
-extern int event_debug_created_threadable_ctx_;                    
+extern int event_debug_created_threadable_ctx_; // 是否已经完成多线程alloc lock, 即evthread 初始化
 extern int event_debug_mode_on_;
 #endif
 
 /* globals */
 GLOBAL int evthread_lock_debugging_enabled_ = 0;
+GLOBAL unsigned long (*evthread_id_fn_)(void) = NULL; // lock cond 的属主tid获得方法
+
+// use by interface
 GLOBAL struct evthread_lock_callbacks evthread_lock_fns_ = {
 	0, 0, NULL, NULL, NULL, NULL
 };
-GLOBAL unsigned long (*evthread_id_fn_)(void) = NULL;
 GLOBAL struct evthread_condition_callbacks evthread_cond_fns_ = {
 	0, NULL, NULL, NULL, NULL
 };
@@ -75,6 +81,7 @@ evthread_set_id_callback(unsigned long (*id_fn)(void))
 	evthread_id_fn_ = id_fn;
 }
 
+// 获得真实lock cbs
 struct evthread_lock_callbacks *evthread_get_lock_callbacks()
 {
 	return evthread_lock_debugging_enabled_
@@ -90,6 +97,8 @@ void evthreadimpl_disable_lock_debugging_(void)
 	evthread_lock_debugging_enabled_ = 0;
 }
 
+// 把cbs设置到全局的evthread_lock_fns_中
+// 可以重复设置
 int
 evthread_set_lock_callbacks(const struct evthread_lock_callbacks *cbs)
 {
@@ -111,6 +120,7 @@ evthread_set_lock_callbacks(const struct evthread_lock_callbacks *cbs)
 		return 0;
 	}
 	if (target->alloc) {
+		// 多次重复绑定同一个cbs
 		/* Uh oh; we already had locking callbacks set up.*/
 		if (target->lock_api_version == cbs->lock_api_version &&
 			target->supported_locktypes == cbs->supported_locktypes &&
@@ -133,6 +143,8 @@ evthread_set_lock_callbacks(const struct evthread_lock_callbacks *cbs)
 	}
 }
 
+// 把cbs设置到全局的evthread_cond_fns_中
+// 可以重复设置
 int
 evthread_set_condition_callbacks(const struct evthread_condition_callbacks *cbs)
 {
@@ -192,6 +204,7 @@ struct debug_lock {
 	void *lock;
 };
 
+// debug lock cbs 的实现fn
 // 带有统计的lock函数
 // 使用的还是原来的lock，仅增加统计
 static void *
@@ -366,6 +379,7 @@ evthread_debug_get_real_lock_(void *lock_)
 	return lock->lock;
 }
 
+// todo: ???
 void *
 evthread_setup_global_lock_(void *lock_, unsigned locktype, int enable_locks)
 {
@@ -423,6 +437,7 @@ evthread_setup_global_lock_(void *lock_, unsigned locktype, int enable_locks)
 }
 
 
+// 使用evthread_lock_fns_的interface,始终使用 evthread_lock_fns_
 #ifndef EVTHREAD_EXPOSE_STRUCTS
 unsigned long
 evthreadimpl_get_id_()

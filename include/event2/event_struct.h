@@ -106,9 +106,10 @@ struct name {								\
 struct event;
 
 // cb standard
+// 相当于触发后的task，放到activequeue中取execute
 struct event_callback {
 	TAILQ_ENTRY(event_callback) evcb_active_next;
-	short evcb_flags;
+	short evcb_flags; // 标识这个event当前位置
 	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority */
 	ev_uint8_t evcb_closure;
 	/* allows us to adopt for different types of events */
@@ -151,6 +152,9 @@ struct event {
 		/* used by signal events */
 		struct {
 			LIST_ENTRY (event) ev_signal_next;
+
+			// 本event监听的sig触发次数，即会触发cb call ncalls次
+      // see event_signal_closure
 			short ev_ncalls;
 			/* Allows deletes in callback */
 			short *ev_pncalls;
