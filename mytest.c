@@ -4,6 +4,7 @@
 
 #include <signal.h>
 //event.c文件
+// this is bullshit
 int
 evmap_signal_add(struct event_base *base, int sig, struct event *ev)
 {
