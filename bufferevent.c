@@ -115,6 +115,7 @@ bufferevent_unsuspend_write_(struct bufferevent *bufev, bufferevent_suspend_flag
 
 /* Callback to implement watermarks on the input buffer.  Only enabled
  * if the watermark is set. */
+// input buffer 针对fd 的高水位处理
 static void
 bufferevent_inbuf_wm_cb(struct evbuffer *buf,
     const struct evbuffer_cb_info *cbinfo,
@@ -131,6 +132,10 @@ bufferevent_inbuf_wm_cb(struct evbuffer *buf,
 		bufferevent_wm_unsuspend_read(bufev);
 }
 
+// bufferevent_private.deferred.cb
+// 有lock情况下的buffevent析构函数
+// 1. 先处理pending的cb，call一遍，然后cancel掉
+// 2. 添加一个destructor到激活队列中取destroy bufferevent_private
 static void
 bufferevent_run_deferred_callbacks_locked(struct event_callback *cb, void *arg)
 {
@@ -138,6 +143,7 @@ bufferevent_run_deferred_callbacks_locked(struct event_callback *cb, void *arg)
 	struct bufferevent *bufev = &bufev_private->bev;
 
 	BEV_LOCK(bufev);
+	// 析构前将所有pending 的cb都call一遍
 	if ((bufev_private->eventcb_pending & BEV_EVENT_CONNECTED) &&
 	    bufev->errorcb) {
 		/* The "connected" happened before any reads or writes, so
@@ -164,6 +170,7 @@ bufferevent_run_deferred_callbacks_locked(struct event_callback *cb, void *arg)
 	bufferevent_decref_and_unlock_(bufev);
 }
 
+// 无lock情况下的buffevent析构函数
 static void
 bufferevent_run_deferred_callbacks_unlocked(struct event_callback *cb, void *arg)
 {
@@ -289,6 +296,7 @@ bufferevent_trigger_event(struct bufferevent *bufev, short what, int options)
 }
 
 // 初始化一个完整的bufferevent_private
+// 绑定event_base 和 bufferevent_private
 int
 bufferevent_init_common_(struct bufferevent_private *bufev_private,
     struct event_base *base,
@@ -344,6 +352,7 @@ bufferevent_init_common_(struct bufferevent_private *bufev_private,
 		event_warnx("UNLOCK_CALLBACKS requires DEFER_CALLBACKS");
 		return -1;
 	}
+  // set bufferevent_private.deferred, 设置析构函数
 	if (options & BEV_OPT_UNLOCK_CALLBACKS)
 		event_deferred_cb_init_(
 		    &bufev_private->deferred,
@@ -683,6 +692,7 @@ bufferevent_transfer_lock_ownership_(struct bufferevent *donor,
 }
 #endif
 
+// todo: 销毁bufferevet_private,减refcnt并且unlock
 int
 bufferevent_decref_and_unlock_(struct bufferevent *bufev)
 {
@@ -704,6 +714,7 @@ bufferevent_decref_and_unlock_(struct bufferevent *bufev)
 
 	/* Okay, we're out of references. Let's finalize this once all the
 	 * callbacks are done running. */
+	// 收集这个bufferevent_private下的所有cb
 	cbs[0] = &bufev->ev_read.ev_evcallback;
 	cbs[1] = &bufev->ev_write.ev_evcallback;
 	cbs[2] = &bufev_private->deferred;
@@ -716,6 +727,8 @@ bufferevent_decref_and_unlock_(struct bufferevent *bufev)
 	n_cbs += evbuffer_get_callbacks_(bufev->input, cbs+n_cbs, MAX_CBS-n_cbs);
 	n_cbs += evbuffer_get_callbacks_(bufev->output, cbs+n_cbs, MAX_CBS-n_cbs);
 
+	// 放入激活队列一个event，目的是执行bufferevent_finalize_cb_析构
+	// 其他的event 全部取消
 	event_callback_finalize_many_(bufev->ev_base, n_cbs, cbs,
 	    bufferevent_finalize_cb_);
 
@@ -725,6 +738,8 @@ bufferevent_decref_and_unlock_(struct bufferevent *bufev)
 	return 1;
 }
 
+// 结束当前的eventcb时会调用这个
+// 相当于bufferevent_private的析构函数，bufferevent_init_common_的逆操作
 static void
 bufferevent_finalize_cb_(struct event_callback *evcb, void *arg_)
 {
@@ -810,6 +825,7 @@ bufferevent_incref(struct bufferevent *bufev)
 }
 
 // 把base.lock 赋值给bufferevent 和evbuffer
+// 设置好bufferevent_private.lock
 int
 bufferevent_enable_locking_(struct bufferevent *bufev, void *lock)
 {
@@ -823,16 +839,19 @@ bufferevent_enable_locking_(struct bufferevent *bufev, void *lock)
 	underlying = bufferevent_get_underlying(bufev);
 
 	if (!lock && underlying && BEV_UPCAST(underlying)->lock) {
+		// 没锁 ，优先拿underlying->lock
 		lock = BEV_UPCAST(underlying)->lock;
 		BEV_UPCAST(bufev)->lock = lock;
 		BEV_UPCAST(bufev)->own_lock = 0;
 	} else if (!lock) {
+		// 没锁则自己分配
 		EVTHREAD_ALLOC_LOCK(lock, EVTHREAD_LOCKTYPE_RECURSIVE);
 		if (!lock)
 			return -1;
 		BEV_UPCAST(bufev)->lock = lock;
 		BEV_UPCAST(bufev)->own_lock = 1;
 	} else {
+		// 用已有的lock
 		BEV_UPCAST(bufev)->lock = lock;
 		BEV_UPCAST(bufev)->own_lock = 0;
 	}

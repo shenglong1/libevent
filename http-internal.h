@@ -61,9 +61,11 @@ struct evhttp_connection {
 
 	struct event retry_ev;		/* for retrying connects */
 
+	// local
 	char *bind_address;		/* address to use for binding the src */
 	ev_uint16_t bind_port;		/* local port for binding the src */
 
+	// remote
 	char *address;			/* address to connect to */
 	ev_uint16_t port;
 
@@ -100,7 +102,7 @@ struct evhttp_connection {
 	void (*closecb)(struct evhttp_connection *, void *);
 	void *closecb_arg;
 
-	struct event_callback read_more_deferred_cb;
+	struct event_callback read_more_deferred_cb; // callbacks
 
 	struct event_base *base;
 	struct evdns_base *dns_base;

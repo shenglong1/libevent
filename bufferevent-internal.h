@@ -164,6 +164,7 @@ struct bufferevent_private {
 
 	/** Flag: set if we have deferred callbacks and a read callback is
 	 * pending. */
+	// set 表示当前有readcb pending，这样当析构deferred调用时，回去call一遍readcb
 	unsigned readcb_pending : 1;
 	/** Flag: set if we have deferred callbacks and a write callback is
 	 * pending. */
@@ -195,7 +196,7 @@ struct bufferevent_private {
 	int dns_error;
 
 	/** Used to implement deferred callbacks */
-	struct event_callback deferred;
+	struct event_callback deferred; // 析构函数
 
 	/** The options this bufferevent was constructed with */
 	enum bufferevent_options options;

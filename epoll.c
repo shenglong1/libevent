@@ -27,7 +27,7 @@
 #include "event2/event-config.h"
 #include "evconfig-private.h"
 
-#ifdef EVENT__HAVE_EPOLL
+//#ifdef EVENT__HAVE_EPOLL
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -263,6 +263,7 @@ epoll_op_to_string(int op)
 	ch->close_change,                          \
 	change_to_string(ch->close_change)
 
+// change 作用到backend data
 static int
 epoll_apply_one_change(struct event_base *base,
     struct epollop *epollop,
@@ -537,4 +538,4 @@ epoll_dealloc(struct event_base *base)
 	mm_free(epollop);
 }
 
-#endif /* EVENT__HAVE_EPOLL */
+//#endif /* EVENT__HAVE_EPOLL */
