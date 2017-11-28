@@ -44,6 +44,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+// happy
 
 #include "event-internal.h"
 #include "evsignal-internal.h"
