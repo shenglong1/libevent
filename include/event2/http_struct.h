@@ -88,8 +88,8 @@ struct {
 	/* cache of the hostname for evhttp_request_get_host */
 	char *host_cache;
 
-	enum evhttp_request_kind kind; // request or response
-	enum evhttp_cmd_type type; // get or post
+	enum evhttp_request_kind kind;
+	enum evhttp_cmd_type type;
 
 	size_t headers_size;
 	size_t body_size;

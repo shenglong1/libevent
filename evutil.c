@@ -23,7 +23,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-// todo: wrapper兼容不同底层的interface
 
 #include "event2/event-config.h"
 #include "evconfig-private.h"
@@ -74,9 +73,6 @@
 #endif
 #include <time.h>
 #include <sys/stat.h>
-#include <bits/fcntl.h>
-#include <values.h>
-
 #ifdef EVENT__HAVE_IFADDRS_H
 #include <ifaddrs.h>
 #endif
@@ -208,7 +204,6 @@ evutil_socketpair(int family, int type, int protocol, evutil_socket_t fd[2])
 #endif
 }
 
-// 在loopback上线程自己connect，accept
 int
 evutil_ersatz_socketpair_(int family, int type, int protocol,
     evutil_socket_t fd[2])

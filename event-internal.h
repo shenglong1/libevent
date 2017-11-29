@@ -239,11 +239,11 @@ struct event_base {
 
 	/** Set if we should terminate the loop once we're done processing
 	 * events. */
-	int event_gotterm; // set by event_loopexit
+	int event_gotterm;
 	/** Set if we should terminate the loop immediately */
-	int event_break; // set by event_loopbreak
+	int event_break; // ???
 	/** Set if we should start a new instance of the loop immediately. */
-	int event_continue; // set by event_base_loopcontinue
+	int event_continue;
 
 	/** The currently running priority of events */
 	int event_running_priority;
@@ -286,7 +286,7 @@ struct event_base {
 
 	// todo: event register queue
 	/** Mapping from file descriptors to enabled (added) events */
-	struct event_io_map io; // event_map_entry(fd-events) list
+	struct event_io_map io;
 
 	/** Mapping from signal numbers to enabled (added) events. */
 	struct event_signal_map sigmap;

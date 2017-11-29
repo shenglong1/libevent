@@ -89,7 +89,6 @@ event_enable_debug_logging(ev_uint32_t which)
 #endif
 }
 
-// 设置致命错误exit时的退出函数
 void
 event_set_fatal_callback(event_fatal_cb cb)
 {
@@ -228,7 +227,6 @@ event_set_log_callback(event_log_cb cb)
 	log_fn = cb;
 }
 
-// 默认写到stderr, 优先写到log_fn
 static void
 event_log(int severity, const char *msg)
 {

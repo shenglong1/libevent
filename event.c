@@ -648,7 +648,6 @@ event_base_new_with_config(const struct event_config *cfg)
 			if (event_config_is_avoided_method(cfg, eventops[i]->name))
 				continue; // 禁用
 			if ((eventops[i]->features & cfg->require_features) != cfg->require_features)
-        // 保证eventops.features必须包含至少所有cfg.require_features
 				continue;
 		}
 
@@ -658,7 +657,7 @@ event_base_new_with_config(const struct event_config *cfg)
 
 		base->evsel = eventops[i];
 
-		base->evbase = base->evsel->init(base); // construct backend real data, sig backend/data
+		base->evbase = base->evsel->init(base); // construct
 	}
 
 	if (base->evbase == NULL) {
@@ -2053,7 +2052,6 @@ event_base_once(struct event_base *base, evutil_socket_t fd, short events,
 	eonce->cb = callback;
 	eonce->arg = arg;
 
-  // 创建一个timer或普通event
 	if ((events & (EV_TIMEOUT|EV_SIGNAL|EV_READ|EV_WRITE|EV_CLOSED)) == EV_TIMEOUT) {
 		evtimer_assign(&eonce->ev, base, event_once_cb, eonce);
 
@@ -2173,7 +2171,6 @@ event_self_cbarg(void)
 	return &event_self_cbarg_ptr_;
 }
 
-// 获取当前正在运行的event
 struct event *
 event_base_get_running_event(struct event_base *base)
 {
@@ -2269,7 +2266,6 @@ event_free_finalize(unsigned flags, struct event *ev, event_finalize_callback_fn
 	return event_finalize_impl_(flags|EVENT_FINALIZE_FREE_, ev, cb);
 }
 
-// 强行删除evcb对应的event，并重设evcb.cb = cb并使之激活
 void
 event_callback_finalize_nolock_(struct event_base *base, unsigned flags, struct event_callback *evcb, void (*cb)(struct event_callback *, void *))
 {
@@ -2298,7 +2294,6 @@ event_callback_finalize_(struct event_base *base, unsigned flags, struct event_c
 /** Internal: Finalize all of the n_cbs callbacks in evcbs.  The provided
  * callback will be invoked on *one of them*, after they have *all* been
  * finalized. */
-// 无论找谁，始终找一个evcb和他的event来设置成cb放入激活队列
 int
 event_callback_finalize_many_(struct event_base *base, int n_cbs, struct event_callback **evcbs, void (*cb)(struct event_callback *, void *))
 {
@@ -2317,10 +2312,10 @@ event_callback_finalize_many_(struct event_base *base, int n_cbs, struct event_c
 	for (i = 0; i < n_cbs; ++i) {
 		struct event_callback *evcb = evcbs[i];
 		if (evcb == base->current_event) {
-			event_callback_finalize_nolock_(base, 0, evcb, cb); // 替换current_event为析构函数，放入激活队列
+			event_callback_finalize_nolock_(base, 0, evcb, cb);
 			++n_pending;
 		} else {
-			event_callback_cancel_nolock_(base, evcb, 0); // 其他event全部取消，因为在bufferevent_run_deferred_callbacks_locked中已经全部call了
+			event_callback_cancel_nolock_(base, evcb, 0);
 		}
 	}
 
@@ -2403,7 +2398,6 @@ event_initialized(const struct event *ev)
 	return 1;
 }
 
-// 获取一个event的所有字段信息
 void
 event_get_assignment(const struct event *event, struct event_base **base_out, evutil_socket_t *fd_out, short *events_out, event_callback_fn *callback_out, void **arg_out)
 {
@@ -3693,12 +3687,11 @@ event_base_foreach_event_nolock_(struct event_base *base,
 	struct event *ev;
 
 	/* Start out with all the EVLIST_INSERTED events. */
-	if ((r = evmap_foreach_event_(base, fn, arg))) // 遍历注册队列
+	if ((r = evmap_foreach_event_(base, fn, arg)))
 		return r;
 
 	/* Okay, now we deal with those events that have timeouts and are in
 	 * the min-heap. */
-	// timeout 队列
 	for (u = 0; u < base->timeheap.n; ++u) {
 		ev = base->timeheap.p[u];
 		if (ev->ev_flags & EVLIST_INSERTED) {
@@ -3725,9 +3718,8 @@ event_base_foreach_event_nolock_(struct event_base *base,
 		}
 	}
 
-	/* Finally, we deal with all the active events that we haven't touched
+	/* Finally, we deal wit all the active events that we haven't touched
 	 * yet. */
-	// 激活队列
 	for (i = 0; i < base->nactivequeues; ++i) {
 		struct event_callback *evcb;
 		TAILQ_FOREACH(evcb, &base->activequeues[i], evcb_active_next) {
@@ -3819,7 +3811,6 @@ event_base_foreach_event(struct event_base *base,
 }
 
 
-// dump insert/timeout event 和 active/active_later到output
 void
 event_base_dump_events(struct event_base *base, FILE *output)
 {
