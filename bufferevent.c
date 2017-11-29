@@ -216,6 +216,7 @@ bufferevent_run_deferred_callbacks_unlocked(struct event_callback *cb, void *arg
 #undef UNLOCKED
 }
 
+// 仅是增加private.refcnt
 #define SCHEDULE_DEFERRED(bevp)						\
 	do {								\
 		if (event_deferred_cb_schedule_(			\
@@ -234,7 +235,8 @@ bufferevent_run_readcb_(struct bufferevent *bufev, int options)
 	if (bufev->readcb == NULL)
 		return;
 	if ((p->options|options) & BEV_OPT_DEFER_CALLBACKS) {
-		p->readcb_pending = 1;
+    // 延迟call readcb
+		p->readcb_pending = 1; // 将readcb留给deferred来call
 		SCHEDULE_DEFERRED(p);
 	} else {
 		bufev->readcb(bufev, bufev->cbarg);
@@ -262,6 +264,7 @@ bufferevent_run_writecb_(struct bufferevent *bufev, int options)
 		BEV_TRIG_DEFER_CALLBACKS	\
 	)
 
+// 强行触发 bufferevent.readcb/writecb // 仅受水位线控制
 void
 bufferevent_trigger(struct bufferevent *bufev, short iotype, int options)
 {
@@ -287,6 +290,7 @@ bufferevent_run_eventcb_(struct bufferevent *bufev, short what, int options)
 	}
 }
 
+// 强行触发 bufferevent.eventcb // 仅受水位线控制
 void
 bufferevent_trigger_event(struct bufferevent *bufev, short what, int options)
 {
@@ -410,6 +414,9 @@ bufferevent_getcb(struct bufferevent *bufev,
 	BEV_UNLOCK(bufev);
 }
 
+/*
+ * 成员变量get函数
+ */
 struct evbuffer *
 bufferevent_get_input(struct bufferevent *bufev)
 {
@@ -438,6 +445,7 @@ bufferevent_get_priority(const struct bufferevent *bufev)
 	}
 }
 
+// 写到 output buffer
 int
 bufferevent_write(struct bufferevent *bufev, const void *data, size_t size)
 {
@@ -456,6 +464,7 @@ bufferevent_write_buffer(struct bufferevent *bufev, struct evbuffer *buf)
 	return 0;
 }
 
+// drain from input buffer
 size_t
 bufferevent_read(struct bufferevent *bufev, void *data, size_t size)
 {
@@ -468,6 +477,11 @@ bufferevent_read_buffer(struct bufferevent *bufev, struct evbuffer *buf)
 	return (evbuffer_add_buffer(buf, bufev->input));
 }
 
+
+/*
+ * ops 为底层实现的一些函数
+ */
+// 开启读或写监听，实际是ops.enable
 int
 bufferevent_enable(struct bufferevent *bufev, short event)
 {
@@ -477,8 +491,9 @@ bufferevent_enable(struct bufferevent *bufev, short event)
 	int r = 0;
 
 	bufferevent_incref_and_lock_(bufev);
+	// todo: ???
 	if (bufev_private->read_suspended)
-		impl_events &= ~EV_READ;
+		impl_events &= ~EV_READ; // 关闭读
 	if (bufev_private->write_suspended)
 		impl_events &= ~EV_WRITE;
 
@@ -492,6 +507,7 @@ bufferevent_enable(struct bufferevent *bufev, short event)
 }
 
 // set bufferevent.timeout
+// 会将bufferevent.event加入到timeout监听队列
 int
 bufferevent_set_timeouts(struct bufferevent *bufev,
 			 const struct timeval *tv_read,
@@ -542,6 +558,7 @@ bufferevent_settimeout(struct bufferevent *bufev,
 }
 
 
+// 清除监听bufferevent.event
 int
 bufferevent_disable_hard_(struct bufferevent *bufev, short event)
 {
@@ -580,6 +597,7 @@ bufferevent_disable(struct bufferevent *bufev, short event)
  */
 
 // 设置bufferevent_private.watermark_cb, bufferevent.evbuffer.input.cb
+// 并根据当前input水位call 一次 bufferevent_inbuf_wm_cb
 void
 bufferevent_setwatermark(struct bufferevent *bufev, short events,
     size_t lowmark, size_t highmark)
@@ -604,8 +622,9 @@ bufferevent_setwatermark(struct bufferevent *bufev, short events,
 
 			if (bufev_private->read_watermarks_cb == NULL) {
 				bufev_private->read_watermarks_cb =
-				    evbuffer_add_cb(bufev->input, bufferevent_inbuf_wm_cb, bufev);
+				    evbuffer_add_cb(bufev->input, bufferevent_inbuf_wm_cb, bufev); // evbuffer中添加一个callback节点
 			}
+			// 并将概evbuffer.cb节点 的flag设置
 			evbuffer_cb_set_flags(bufev->input,
 				      bufev_private->read_watermarks_cb,
 				      EVBUFFER_CB_ENABLED|EVBUFFER_CB_NODEFER);
@@ -652,6 +671,8 @@ bufferevent_getwatermark(struct bufferevent *bufev, short events,
 	return -1;
 }
 
+// input to user
+// output to fd
 int
 bufferevent_flush(struct bufferevent *bufev,
     short iotype,
@@ -705,7 +726,7 @@ bufferevent_decref_and_unlock_(struct bufferevent *bufev)
 	EVUTIL_ASSERT(bufev_private->refcnt > 0);
 
 	if (--bufev_private->refcnt) {
-		BEV_UNLOCK(bufev);
+		BEV_UNLOCK(bufev); // 减小refcnt，减到0时析构
 		return 0;
 	}
 
@@ -738,6 +759,7 @@ bufferevent_decref_and_unlock_(struct bufferevent *bufev)
 	return 1;
 }
 
+// 析构bufferevent时最终放到激活队列的cb
 // 结束当前的eventcb时会调用这个
 // 相当于bufferevent_private的析构函数，bufferevent_init_common_的逆操作
 static void
@@ -824,8 +846,7 @@ bufferevent_incref(struct bufferevent *bufev)
 	BEV_UNLOCK(bufev);
 }
 
-// 把base.lock 赋值给bufferevent 和evbuffer
-// 设置好bufferevent_private.lock
+// 设置好bufferevent_private.lock, input.lock, output.lock, underlying.lock
 int
 bufferevent_enable_locking_(struct bufferevent *bufev, void *lock)
 {
@@ -867,6 +888,7 @@ bufferevent_enable_locking_(struct bufferevent *bufev, void *lock)
 #endif
 }
 
+// todo: ??
 int
 bufferevent_setfd(struct bufferevent *bev, evutil_socket_t fd)
 {
@@ -928,6 +950,7 @@ bufferevent_get_enabled(struct bufferevent *bufev)
 	return r;
 }
 
+// todo: ???? 什么是underlying
 struct bufferevent *
 bufferevent_get_underlying(struct bufferevent *bev)
 {
@@ -941,6 +964,7 @@ bufferevent_get_underlying(struct bufferevent *bev)
 	return (res<0) ? NULL : d.ptr;
 }
 
+// 通用超时cb
 static void
 bufferevent_generic_read_timeout_cb(evutil_socket_t fd, short event, void *ctx)
 {

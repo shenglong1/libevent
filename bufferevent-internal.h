@@ -165,10 +165,10 @@ struct bufferevent_private {
 	/** Flag: set if we have deferred callbacks and a read callback is
 	 * pending. */
 	// set 表示当前有readcb pending，这样当析构deferred调用时，回去call一遍readcb
-	unsigned readcb_pending : 1;
+	unsigned readcb_pending : 1; // 正在延迟run readcb
 	/** Flag: set if we have deferred callbacks and a write callback is
 	 * pending. */
-	unsigned writecb_pending : 1;
+	unsigned writecb_pending : 1; // 正在延迟run writecb
 	/** Flag: set if we are currently busy connecting. */
 	unsigned connecting : 1;
 	/** Flag: set if a connect failed prematurely; this is a hack for
@@ -176,16 +176,18 @@ struct bufferevent_private {
 	unsigned connection_refused : 1;
 	/** Set to the events pending if we have deferred callbacks and
 	 * an events callback is pending. */
-	short eventcb_pending;
+	short eventcb_pending; // readcb/write超时时设置，是超时原因
 
 	/** If set, read is suspended until one or more conditions are over.
 	 * The actual value here is a bitfield of those conditions; see the
 	 * BEV_SUSPEND_* flags above. */
+  // read 被suspend 的原因
 	bufferevent_suspend_flags read_suspended; // fd的read 触发被挂起，暂时不响应
 
 	/** If set, writing is suspended until one or more conditions are over.
 	 * The actual value here is a bitfield of those conditions; see the
 	 * BEV_SUSPEND_* flags above. */
+	// write 被suspend 的原因
 	bufferevent_suspend_flags write_suspended;
 
 	/** Set to the current socket errno if we have deferred callbacks and
@@ -202,7 +204,7 @@ struct bufferevent_private {
 	enum bufferevent_options options;
 
 	/** Current reference count for this bufferevent. */
-	int refcnt;
+	int refcnt; // 有延迟cb时才会+1
 
 	/** Lock for this bufferevent.  Shared by the inbuf and the outbuf.
 	 * If NULL, locking is disabled. */
