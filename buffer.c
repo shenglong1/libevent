@@ -515,6 +515,8 @@ evbuffer_run_callbacks(struct evbuffer *buffer, int running_deferred)
 }
 
 // call all evbuffer.callbacks
+// 1. 有deferred就把deferred_cb放到激活队列
+// 2. 否则直接call all cb
 void
 evbuffer_invoke_callbacks_(struct evbuffer *buffer)
 {
@@ -1726,7 +1728,7 @@ done:
 
 /* Adds data to an event buffer */
 
-// 尾部添加数据到buffer
+// 尾部添加数据到buffer, 并invoke evbuffer.cbs
 int
 evbuffer_add(struct evbuffer *buf, const void *data_in, size_t datlen)
 {
