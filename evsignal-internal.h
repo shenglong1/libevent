@@ -52,7 +52,7 @@ struct evsig_info {
 #ifdef EVENT__HAVE_SIGACTION
 	struct sigaction **sh_old;
 #else
-	ev_sighandler_t **sh_old;
+	ev_sighandler_t **sh_old; // sh_old[sig_num] = *ev_sighandler_t
 #endif
 	/* Size of sh_old. */
 	int sh_old_max;

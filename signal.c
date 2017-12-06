@@ -211,6 +211,7 @@ evsig_init_(struct event_base *base)
 	return 0;
 }
 
+// signal(sig, fun)，并保存老的sigfun,如果evsig_info.sh_old不够，要realloc
 /* Helper: set the signal handler for evsignal to handler in base, so that
  * we can restore the original handler when we clear the current one. */
 // store old sigfuns, bind the only one sigfun(evsig_handler)
@@ -233,7 +234,7 @@ evsig_set_handler_(struct event_base *base, int evsignal, void (__cdecl *handler
 		int new_max = evsignal + 1;
 		event_debug(("%s: evsignal (%d) >= sh_old_max (%d), resizing",
 			    __func__, evsignal, sig->sh_old_max));
-		p = mm_realloc(sig->sh_old, new_max * sizeof(*sig->sh_old));
+		p = mm_realloc(sig->sh_old, new_max * sizeof(*sig->sh_old)); // realloc sigfun一级指针数组
 		if (p == NULL) {
 			event_warn("realloc");
 			return (-1);
@@ -267,6 +268,7 @@ evsig_set_handler_(struct event_base *base, int evsignal, void (__cdecl *handler
 		return (-1);
 	}
 #else
+  // bind new sigfun and store old
 	if ((sh = signal(evsignal, handler)) == SIG_ERR) {
 		event_warn("signal");
 		mm_free(sig->sh_old[evsignal]);

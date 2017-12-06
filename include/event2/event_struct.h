@@ -111,7 +111,7 @@ struct event_callback {
 	TAILQ_ENTRY(event_callback) evcb_active_next;
 	short evcb_flags; // 标识这个event当前位置
 	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority */
-	ev_uint8_t evcb_closure;
+	ev_uint8_t evcb_closure; // event监听对象类型，指示具体cb
 	/* allows us to adopt for different types of events */
 	union {
 		void (*evcb_callback)(evutil_socket_t, short, void *);
@@ -145,13 +145,13 @@ struct event {
 	union {
 		/* used for io events */
 		struct {
-			LIST_ENTRY (event) ev_io_next;
+			LIST_ENTRY (event) ev_io_next; // 指向注册队列中的下一个event
 			struct timeval ev_timeout;
 		} ev_io;
 
 		/* used by signal events */
 		struct {
-			LIST_ENTRY (event) ev_signal_next;
+			LIST_ENTRY (event) ev_signal_next; // 指向注册列表中的下一个event
 
 			// 本event监听的sig触发次数，即会触发cb call ncalls次
       // see event_signal_closure
@@ -161,7 +161,7 @@ struct event {
 		} ev_signal;
 	} ev_;
 
-	short ev_events; // flags
+	short ev_events; // flags EV_WRITE/EV_READ/...
 	short ev_res;		/* result passed to event callback */
 	struct timeval ev_timeout;
 };

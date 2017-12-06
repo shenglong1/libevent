@@ -53,6 +53,7 @@
 #include <time.h>
 #include <limits.h>
 #include <values.h>
+#include <evrpc.h>
 
 #include "event2/event.h"
 #include "event2/event_struct.h"
@@ -1974,7 +1975,7 @@ event_base_loop(struct event_base *base, int flags)
 
 		clear_time_cache(base);
 
-		res = evsel->dispatch(base, tv_p);
+		res = evsel->dispatch(base, tv_p); // backend.wait & throw event to active queue
 
 		if (res == -1) {
 			event_debug(("%s: dispatch returned unsuccessfully.",
@@ -1988,7 +1989,7 @@ event_base_loop(struct event_base *base, int flags)
 		timeout_process(base); // 处理超时：加入激活队列，从base中删除
 
 		if (N_ACTIVE_CALLBACKS(base)) {
-			int n = event_process_active(base); // 处理激活队列中的event,call callbacks
+			int n = event_process_active(base); // 处理激活队列中的event,call event.callbacks
 			if ((flags & EVLOOP_ONCE)
 					&& N_ACTIVE_CALLBACKS(base) == 0
 					&& n != 0)
@@ -3168,6 +3169,7 @@ timeout_next(struct event_base *base, struct timeval **tv_p)
 	return (res);
 }
 
+// 处理timeout event超时
 /* Activate every event whose timeout has elapsed. */
 static void
 timeout_process(struct event_base *base)
@@ -3188,6 +3190,7 @@ timeout_process(struct event_base *base)
 
 		/* delete this event from the I/O queues */
 		event_del_nolock_(ev, EVENT_DEL_NOBLOCK);
+		// 从这里看出来, 如果一个事件被同时注册为io和timeout，则超时后就删除了
 
 		event_debug(("timeout_process: event: %p, call %p",
 				ev, ev->ev_callback));

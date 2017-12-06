@@ -511,7 +511,7 @@ evmap_signal_active_(struct event_base *base, evutil_socket_t sig, int ncalls)
 
 	if (sig < 0 || sig >= map->nentries)
 		return;
-	GET_SIGNAL_SLOT(ctx, map, sig, evmap_signal);
+	GET_SIGNAL_SLOT(ctx, map, sig, evmap_signal); // make ctx pointer to evmap_signal
 
 	if (!ctx)
 		return;
