@@ -72,7 +72,7 @@ struct bufferevent {
 	struct event_base *ev_base;
 	/** Pointer to a table of function pointers to set up how this
 	    bufferevent behaves. */
-	const struct bufferevent_ops *be_ops; // fn struct
+	const struct bufferevent_ops *be_ops; // fn struct to handle bufferevent
 
 	/** A read event that triggers when a timeout has happened or a socket
 	    is ready to read data.  Only used by some subtypes of
@@ -106,7 +106,7 @@ struct bufferevent {
 
 	/** Events that are currently enabled: currently EV_READ and EV_WRITE
 	    are supported. */
-	short enabled;
+	short enabled; // 当前支持监听的event类型
 };
 
 #ifdef __cplusplus

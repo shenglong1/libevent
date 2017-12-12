@@ -64,6 +64,7 @@ static void bufferevent_cancel_all_(struct bufferevent *bev);
 static void bufferevent_finalize_cb_(struct event_callback *evcb, void *arg_);
 
 // sockfd触发，但readbuff不足，挂起fd read触发
+// 高水位时 suspend read
 void
 bufferevent_suspend_read_(struct bufferevent *bufev, bufferevent_suspend_flags what)
 {
@@ -216,7 +217,7 @@ bufferevent_run_deferred_callbacks_unlocked(struct event_callback *cb, void *arg
 #undef UNLOCKED
 }
 
-// 仅是增加private.refcnt
+// put private.deferred into base.active queue
 #define SCHEDULE_DEFERRED(bevp)						\
 	do {								\
 		if (event_deferred_cb_schedule_(			\
@@ -226,6 +227,7 @@ bufferevent_run_deferred_callbacks_unlocked(struct event_callback *cb, void *arg
 	} while (0)
 
 
+// private.deferred 如何使用
 void
 bufferevent_run_readcb_(struct bufferevent *bufev, int options)
 {
@@ -330,7 +332,7 @@ bufferevent_init_common_(struct bufferevent_private *bufev_private,
 
 	bufev->be_ops = ops;
 
-	bufferevent_ratelim_init_(bufev_private);
+	bufferevent_ratelim_init_(bufev_private); // 速率控制
 
 	/*
 	 * Set to EV_WRITE so that using bufferevent_write is going to
@@ -341,7 +343,7 @@ bufferevent_init_common_(struct bufferevent_private *bufev_private,
 
 #ifndef EVENT__DISABLE_THREAD_SUPPORT
 	if (options & BEV_OPT_THREADSAFE) {
-		if (bufferevent_enable_locking_(bufev, NULL) < 0) {
+		if (bufferevent_enable_locking_(bufev, NULL) < 0) { // malloc lock
 			/* cleanup */
 			evbuffer_free(bufev->input);
 			evbuffer_free(bufev->output);
@@ -351,7 +353,7 @@ bufferevent_init_common_(struct bufferevent_private *bufev_private,
 		}
 	}
 #endif
-	if ((options & (BEV_OPT_DEFER_CALLBACKS|BEV_OPT_UNLOCK_CALLBACKS))
+	if ((options & (BEV_OPT_DEFER_CALLBACKS|BEV_OPT_UNLOCK_CALLBACKS)) // 无锁cb 必须有 deferred
 	    == BEV_OPT_UNLOCK_CALLBACKS) {
 		event_warnx("UNLOCK_CALLBACKS requires DEFER_CALLBACKS");
 		return -1;
@@ -378,7 +380,7 @@ bufferevent_init_common_(struct bufferevent_private *bufev_private,
 	return 0;
 }
 
-// 设置bufferevent.cb
+// 设置bufferevent.cb=user.cb
 void
 bufferevent_setcb(struct bufferevent *bufev,
     bufferevent_data_cb readcb, bufferevent_data_cb writecb,
@@ -620,6 +622,8 @@ bufferevent_setwatermark(struct bufferevent *bufev, short events,
 			   enable the callback if needed, and see if we should
 			   suspend/bufferevent_wm_unsuspend. */
 
+
+			// 设置input 的cb，就是这个唯一的高水位调整cb
 			if (bufev_private->read_watermarks_cb == NULL) {
 				bufev_private->read_watermarks_cb =
 				    evbuffer_add_cb(bufev->input, bufferevent_inbuf_wm_cb, bufev); // evbuffer中添加一个callback节点
@@ -629,17 +633,18 @@ bufferevent_setwatermark(struct bufferevent *bufev, short events,
 				      bufev_private->read_watermarks_cb,
 				      EVBUFFER_CB_ENABLED|EVBUFFER_CB_NODEFER);
 
+      // 同时激活一次input高水位调整
 			if (evbuffer_get_length(bufev->input) >= highmark)
-				bufferevent_wm_suspend_read(bufev);
+				bufferevent_wm_suspend_read(bufev); // lock read
 			else if (evbuffer_get_length(bufev->input) < highmark)
-				bufferevent_wm_unsuspend_read(bufev);
+				bufferevent_wm_unsuspend_read(bufev); // unlock read
 		} else {
 			/* There is now no high-water mark for read. */
 			if (bufev_private->read_watermarks_cb)
 				evbuffer_cb_clear_flags(bufev->input,
 				    bufev_private->read_watermarks_cb,
 				    EVBUFFER_CB_ENABLED);
-			bufferevent_wm_unsuspend_read(bufev);
+			bufferevent_wm_unsuspend_read(bufev); // unlock read
 		}
 	}
 	BEV_UNLOCK(bufev);
@@ -714,6 +719,7 @@ bufferevent_transfer_lock_ownership_(struct bufferevent *donor,
 #endif
 
 // todo: 销毁bufferevet_private,减refcnt并且unlock
+// 收集bufferevent_private下所有的cb
 int
 bufferevent_decref_and_unlock_(struct bufferevent *bufev)
 {
@@ -730,6 +736,7 @@ bufferevent_decref_and_unlock_(struct bufferevent *bufev)
 		return 0;
 	}
 
+	// todo: 为何要cancel所有cb并且删除bufferevent ?????
 	if (bufev->be_ops->unlink)
 		bufev->be_ops->unlink(bufev);
 
@@ -846,6 +853,7 @@ bufferevent_incref(struct bufferevent *bufev)
 	BEV_UNLOCK(bufev);
 }
 
+// allocate lock
 // 设置好bufferevent_private.lock, input.lock, output.lock, underlying.lock
 int
 bufferevent_enable_locking_(struct bufferevent *bufev, void *lock)
@@ -882,7 +890,7 @@ bufferevent_enable_locking_(struct bufferevent *bufev, void *lock)
 
 	if (underlying && !BEV_UPCAST(underlying)->lock)
 		// giv lock to bufferevent
-		bufferevent_enable_locking_(underlying, lock);
+		bufferevent_enable_locking_(underlying, lock); // lock give to underlying
 
 	return 0;
 #endif
@@ -964,6 +972,7 @@ bufferevent_get_underlying(struct bufferevent *bev)
 	return (res<0) ? NULL : d.ptr;
 }
 
+/***************************** interface ***********************************************/
 // 通用超时cb
 static void
 bufferevent_generic_read_timeout_cb(evutil_socket_t fd, short event, void *ctx)
@@ -993,6 +1002,7 @@ bufferevent_init_generic_timeout_cbs_(struct bufferevent *bev)
 	    bufferevent_generic_write_timeout_cb, bev);
 }
 
+// 添加或删除r/w timeout 监听
 int
 bufferevent_generic_adj_timeouts_(struct bufferevent *bev)
 {
@@ -1001,7 +1011,7 @@ bufferevent_generic_adj_timeouts_(struct bufferevent *bev)
 	    EVUTIL_UPCAST(bev, struct bufferevent_private, bev);
 	int r1=0, r2=0;
 	if ((enabled & EV_READ) && !bev_p->read_suspended &&
-	    evutil_timerisset(&bev->timeout_read))
+	    evutil_timerisset(&bev->timeout_read)) // read 没有被挂起且要监听read 超时
 		r1 = event_add(&bev->ev_read, &bev->timeout_read);
 	else
 		r1 = event_del(&bev->ev_read);
@@ -1017,6 +1027,7 @@ bufferevent_generic_adj_timeouts_(struct bufferevent *bev)
 	return 0;
 }
 
+// 只对当前pending 的读写设置超时监听
 // 修改或删除bufferevent.ev_read/ev_write的超时
 int
 bufferevent_generic_adj_existing_timeouts_(struct bufferevent *bev)

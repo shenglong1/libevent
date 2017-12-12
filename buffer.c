@@ -3378,6 +3378,7 @@ done:
 	return result;
 }
 
+// 设置cb.flag
 int
 evbuffer_cb_set_flags(struct evbuffer *buffer,
 		      struct evbuffer_cb_entry *cb, ev_uint32_t flags)

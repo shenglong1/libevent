@@ -107,6 +107,7 @@ struct event;
 
 // cb standard
 // 相当于触发后的task，放到activequeue中取execute
+// event_callback通过指针移动upcast到event
 struct event_callback {
 	TAILQ_ENTRY(event_callback) evcb_active_next;
 	short evcb_flags; // 标识这个event当前位置

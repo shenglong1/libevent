@@ -2267,6 +2267,7 @@ event_free_finalize(unsigned flags, struct event *ev, event_finalize_callback_fn
 	return event_finalize_impl_(flags|EVENT_FINALIZE_FREE_, ev, cb);
 }
 
+// cancel evcb and delete evcb_event, invoke cb(on evcb)
 void
 event_callback_finalize_nolock_(struct event_base *base, unsigned flags, struct event_callback *evcb, void (*cb)(struct event_callback *, void *))
 {
@@ -2296,7 +2297,9 @@ event_callback_finalize_(struct event_base *base, unsigned flags, struct event_c
  * callback will be invoked on *one of them*, after they have *all* been
  * finalized. */
 int
-event_callback_finalize_many_(struct event_base *base, int n_cbs, struct event_callback **evcbs, void (*cb)(struct event_callback *, void *))
+event_callback_finalize_many_(struct event_base *base, int n_cbs,
+                              struct event_callback **evcbs,
+															void (*cb)(struct event_callback *, void *))
 {
 	int n_pending = 0, i;
 
@@ -2313,15 +2316,16 @@ event_callback_finalize_many_(struct event_base *base, int n_cbs, struct event_c
 	for (i = 0; i < n_cbs; ++i) {
 		struct event_callback *evcb = evcbs[i];
 		if (evcb == base->current_event) {
-			event_callback_finalize_nolock_(base, 0, evcb, cb);
+			event_callback_finalize_nolock_(base, 0, evcb, cb); // cancel & throw cb(on evcb) to active queue
 			++n_pending;
 		} else {
-			event_callback_cancel_nolock_(base, evcb, 0);
+			event_callback_cancel_nolock_(base, evcb, 0); // cancel
 		}
 	}
 
 	if (n_pending == 0) {
 		/* Just do the first one. */
+		// 如果cb没有被附着到evcb上进入active_queue，则使其附着到第一个evcb, 并进入active_queue
 		event_callback_finalize_nolock_(base, 0, evcbs[0], cb);
 	}
 
@@ -3109,6 +3113,7 @@ event_deferred_cb_cancel_(struct event_base *base, struct event_callback *cb)
 }
 
 #define MAX_DEFERREDS_QUEUED 32
+// put cb to active queue / active later queue
 int
 event_deferred_cb_schedule_(struct event_base *base, struct event_callback *cb)
 {

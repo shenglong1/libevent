@@ -159,7 +159,8 @@ struct bufferevent_private {
 	struct bufferevent bev;
 
 	/** Evbuffer callback to enforce watermarks on input. */
-	struct evbuffer_cb_entry *read_watermarks_cb; // 水位变化时的cb
+	// 水位变化时的cb, 这个cb实际是在bufferevent.input.cb中
+	struct evbuffer_cb_entry *read_watermarks_cb;
 
 	/** If set, we should free the lock when we free the bufferevent. */
 	unsigned own_lock : 1;
@@ -167,7 +168,9 @@ struct bufferevent_private {
 	/** Flag: set if we have deferred callbacks and a read callback is
 	 * pending. */
 	// set 表示当前有readcb pending，这样当析构deferred调用时，回去call一遍readcb
-	unsigned readcb_pending : 1; // 正在延迟run readcb
+	// see bufferevent_run_readcb_
+	// run bufferevent.readcb时 没有实际run，而是schedule(private.deferred)
+	unsigned readcb_pending : 1; // 1, 正在延迟run readcb
 	/** Flag: set if we have deferred callbacks and a write callback is
 	 * pending. */
 	unsigned writecb_pending : 1; // 正在延迟run writecb
@@ -184,6 +187,7 @@ struct bufferevent_private {
 	 * The actual value here is a bitfield of those conditions; see the
 	 * BEV_SUSPEND_* flags above. */
   // read 被suspend 的原因
+	// BEV_SUSPEND_WM 因为watermark被挂起
 	bufferevent_suspend_flags read_suspended; // fd的read 触发被挂起，暂时不响应
 
 	/** If set, writing is suspended until one or more conditions are over.
@@ -194,6 +198,7 @@ struct bufferevent_private {
 
 	/** Set to the current socket errno if we have deferred callbacks and
 	 * an events callback is pending. */
+	// bufferevent.errorcb not call
 	int errno_pending;
 
 	/** The DNS error code for bufferevent_socket_connect_hostname */
@@ -203,7 +208,7 @@ struct bufferevent_private {
 	struct event_callback deferred; // 析构函数
 
 	/** The options this bufferevent was constructed with */
-	enum bufferevent_options options;
+	enum bufferevent_options options; // BEV_OPT_
 
 	/** Current reference count for this bufferevent. */
 	int refcnt; // 有延迟cb时才会+1
