@@ -52,6 +52,7 @@ struct bufferevent_pair {
 
 /* Given a bufferevent that's really a bev part of a bufferevent_pair,
  * return that bufferevent_filtered. Returns NULL otherwise.*/
+// todo: bev to pair
 static inline struct bufferevent_pair *
 upcast(struct bufferevent *bev)
 {
@@ -63,6 +64,7 @@ upcast(struct bufferevent *bev)
 	return bev_p;
 }
 
+// pair -> private -> bufferevent
 #define downcast(bev_pair) (&(bev_pair)->bev.bev)
 
 static inline void
@@ -75,6 +77,7 @@ incref_and_lock(struct bufferevent *b)
 		bufferevent_incref_and_lock_(downcast(bevp->partner));
 }
 
+// 双侧都要 decref
 static inline void
 decref_and_unlock(struct bufferevent *b)
 {
@@ -89,6 +92,7 @@ decref_and_unlock(struct bufferevent *b)
 static void be_pair_outbuf_cb(struct evbuffer *,
     const struct evbuffer_cb_info *, void *);
 
+// 新建pair结构单侧bufferevent
 static struct bufferevent_pair *
 bufferevent_pair_elt_new(struct event_base *base,
     int options)
@@ -106,11 +110,14 @@ bufferevent_pair_elt_new(struct event_base *base,
 		return NULL;
 	}
 
-	bufferevent_init_generic_timeout_cbs_(&bufev->bev.bev);
+	bufferevent_init_generic_timeout_cbs_(&bufev->bev.bev); // 设置bufferevent中的read/write通用超时cb
 
 	return bufev;
 }
 
+// 建立一对互持有的pair,共用一个event_base
+// 完整建立两侧的bufferevent
+// todo: 两侧bev.read event or bev.write event 并未添加到base监听
 int
 bufferevent_pair_new(struct event_base *base, int options,
     struct bufferevent *pair[2])
@@ -121,6 +128,7 @@ bufferevent_pair_new(struct event_base *base, int options,
 	options |= BEV_OPT_DEFER_CALLBACKS;
 	tmp_options = options & ~BEV_OPT_THREADSAFE;
 
+	// todo: 两个private共用一个base
 	bufev1 = bufferevent_pair_elt_new(base, options);
 	if (!bufev1)
 		return -1;
@@ -132,7 +140,7 @@ bufferevent_pair_new(struct event_base *base, int options,
 
 	if (options & BEV_OPT_THREADSAFE) {
 		/*XXXX check return */
-		bufferevent_enable_locking_(downcast(bufev2), bufev1->bev.lock);
+		bufferevent_enable_locking_(downcast(bufev2), bufev1->bev.lock); // use common lock from private1
 	}
 
 	bufev1->partner = bufev2;
@@ -149,6 +157,9 @@ bufferevent_pair_new(struct event_base *base, int options,
 	return 0;
 }
 
+// todo: data transfer ?
+// pair 核心操作
+// 从src.out -> dst.input， 受freeze和watermark影响，最后trigger两侧evbuffer
 static void
 be_pair_transfer(struct bufferevent *src, struct bufferevent *dst,
     int ignore_wm)
@@ -156,8 +167,8 @@ be_pair_transfer(struct bufferevent *src, struct bufferevent *dst,
 	size_t dst_size;
 	size_t n;
 
-	evbuffer_unfreeze(src->output, 1);
-	evbuffer_unfreeze(dst->input, 0);
+	evbuffer_unfreeze(src->output, 1); // unfreeze src.output start
+	evbuffer_unfreeze(dst->input, 0); // unfreeze dst.input end
 
 	if (dst->wm_read.high) {
 		dst_size = evbuffer_get_length(dst->input);
@@ -184,13 +195,14 @@ be_pair_transfer(struct bufferevent *src, struct bufferevent *dst,
 			BEV_DEL_GENERIC_WRITE_TIMEOUT(dst);
 	}
 
-	bufferevent_trigger_nolock_(dst, EV_READ, 0);
+	bufferevent_trigger_nolock_(dst, EV_READ, 0); // trigger user.cb
 	bufferevent_trigger_nolock_(src, EV_WRITE, 0);
 done:
 	evbuffer_freeze(src->output, 1);
 	evbuffer_freeze(dst->input, 0);
 }
 
+// 双方是否监听读或写，src是否有data
 static inline int
 be_pair_wants_to_talk(struct bufferevent_pair *src,
     struct bufferevent_pair *dst)
@@ -201,6 +213,8 @@ be_pair_wants_to_talk(struct bufferevent_pair *src,
 	    evbuffer_get_length(downcast(src)->output);
 }
 
+// pair两侧的output buffer cb
+// 当out有数据写入时，trigger be_pair_transfer
 static void
 be_pair_outbuf_cb(struct evbuffer *outbuf,
     const struct evbuffer_cb_info *info, void *arg)
@@ -221,6 +235,7 @@ be_pair_outbuf_cb(struct evbuffer *outbuf,
 	decref_and_unlock(downcast(bev_pair));
 }
 
+// enable 并不会监听两侧event，而是立即尝试transfer
 static int
 be_pair_enable(struct bufferevent *bufev, short events)
 {
@@ -230,7 +245,7 @@ be_pair_enable(struct bufferevent *bufev, short events)
 	incref_and_lock(bufev);
 
 	if (events & EV_READ) {
-		BEV_RESET_GENERIC_READ_TIMEOUT(bufev);
+		BEV_RESET_GENERIC_READ_TIMEOUT(bufev); // 添加bufferevent.read_event一个超时监听
 	}
 	if ((events & EV_WRITE) && evbuffer_get_length(bufev->output))
 		BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
@@ -273,6 +288,7 @@ be_pair_unlink(struct bufferevent *bev)
 	}
 }
 
+// todo: 先unlink,再destruct，lock给对方 ??
 /* Free *shared* lock in the latest be (since we share it between two of them). */
 static void
 be_pair_destruct(struct bufferevent *bev)
@@ -324,6 +340,7 @@ be_pair_flush(struct bufferevent *bev, short iotype,
 	if ((iotype & EV_WRITE) != 0)
 		be_pair_transfer(bev, partner, 1);
 
+	// todo: ???
 	if (mode == BEV_FINISHED) {
 		short what = BEV_EVENT_EOF;
 		if (iotype & EV_READ)
@@ -336,6 +353,7 @@ be_pair_flush(struct bufferevent *bev, short iotype,
 	return 0;
 }
 
+// get partner.bufferevent
 struct bufferevent *
 bufferevent_pair_get_partner(struct bufferevent *bev)
 {

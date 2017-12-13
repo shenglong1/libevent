@@ -45,6 +45,8 @@ extern "C" {
 #include "ipv6-internal.h"
 #ifdef _WIN32
 #include <ws2tcpip.h>
+#include <event2/bufferevent.h>
+
 #endif
 #ifdef EVENT__HAVE_NETINET_IN_H
 #include <netinet/in.h>

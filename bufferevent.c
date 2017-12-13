@@ -44,6 +44,9 @@
 
 #ifdef _WIN32
 #include <winsock2.h>
+#include <event2/event.h>
+#include <event2/bufferevent.h>
+
 #endif
 
 #include "event2/util.h"
@@ -229,6 +232,7 @@ bufferevent_run_deferred_callbacks_unlocked(struct event_callback *cb, void *arg
 
 ////////////// run bufferevent.usercb ///////////////////
 // private.deferred 如何使用
+// call user.cb or active defferred
 void
 bufferevent_run_readcb_(struct bufferevent *bufev, int options)
 {
@@ -240,9 +244,9 @@ bufferevent_run_readcb_(struct bufferevent *bufev, int options)
 	if ((p->options|options) & BEV_OPT_DEFER_CALLBACKS) {
     // 延迟call readcb
 		p->readcb_pending = 1; // 将readcb留给deferred来call
-		SCHEDULE_DEFERRED(p);
+		SCHEDULE_DEFERRED(p); // active deferred
 	} else {
-		bufev->readcb(bufev, bufev->cbarg);
+		bufev->readcb(bufev, bufev->cbarg); // call user.cb
 	}
 }
 

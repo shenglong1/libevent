@@ -49,6 +49,9 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <event2/event.h>
+#include <event2/bufferevent.h>
+
 #endif
 
 #ifdef EVENT__HAVE_SYS_SOCKET_H

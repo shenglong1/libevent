@@ -965,6 +965,7 @@ PREPEND_CHAIN(struct evbuffer *dst, struct evbuffer *src)
 	}
 }
 
+// read from inbuf, write to outbuf
 int
 evbuffer_add_buffer(struct evbuffer *outbuf, struct evbuffer *inbuf)
 {
@@ -979,6 +980,7 @@ evbuffer_add_buffer(struct evbuffer *outbuf, struct evbuffer *inbuf)
 	if (in_total_len == 0 || outbuf == inbuf)
 		goto done;
 
+	// outbuff forbid write or inbuf forbid read
 	if (outbuf->freeze_end || inbuf->freeze_start) {
 		result = -1;
 		goto done;
