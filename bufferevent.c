@@ -227,6 +227,7 @@ bufferevent_run_deferred_callbacks_unlocked(struct event_callback *cb, void *arg
 	} while (0)
 
 
+////////////// run bufferevent.usercb ///////////////////
 // private.deferred 如何使用
 void
 bufferevent_run_readcb_(struct bufferevent *bufev, int options)
@@ -896,7 +897,7 @@ bufferevent_enable_locking_(struct bufferevent *bufev, void *lock)
 #endif
 }
 
-// todo: ??
+// todo: 替换bev中的fd，将会引发bev.event的重新绑定
 int
 bufferevent_setfd(struct bufferevent *bev, evutil_socket_t fd)
 {

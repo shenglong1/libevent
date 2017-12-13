@@ -122,7 +122,7 @@ bufferevent_socket_set_conn_address(struct bufferevent_private *bev_p,
 }
 
 // bufferevent.evbuffer_w.cb
-// 当user主动发起write时，写入到evbuffer，触发evbuffer.cb, add event监听fd可写
+// 当user主动发起write时，写入到evbuffer后，触发evbuffer.cb, add event监听fd可写
 static void
 bufferevent_socket_outbuf_cb(struct evbuffer *buf,
     const struct evbuffer_cb_info *cbinfo,
@@ -147,7 +147,7 @@ bufferevent_socket_outbuf_cb(struct evbuffer *buf,
 // event.cb call bufferevent中标准的user_readcb
 // 1. 根据watermark调整读取数据量；
 // 2. 读取fd -> evbuff;
-// 3. invoke bufferevent.readcb
+// 3. invoke bufferevent.ev_read.cb
 static void
 bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 {
@@ -159,7 +159,7 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 	short what = BEV_EVENT_READING;
 	ev_ssize_t howmuch = -1, readmax=-1;
 
-	bufferevent_incref_and_lock_(bufev);
+	bufferevent_incref_and_lock_(bufev); // todo: ???
 
 	if (event == EV_TIMEOUT) {
 		/* Note that we only check for event==EV_TIMEOUT. If
@@ -218,7 +218,7 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 	bufferevent_decrement_read_buckets_(bufev_p, res);
 
 	/* Invoke the user callback - must always be called last */
-  // invoke bufferevent.readcb
+  // invoke bufferevent.readcb(user.cb)
 	bufferevent_trigger_nolock_(bufev, EV_READ, 0);
 
 	goto done;
@@ -307,7 +307,7 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 
 	if (evbuffer_get_length(bufev->output)) {
 		evbuffer_unfreeze(bufev->output, 1);
-		res = evbuffer_write_atmost(bufev->output, fd, atmost);
+		res = evbuffer_write_atmost(bufev->output, fd, atmost); // output -> fd
 		evbuffer_freeze(bufev->output, 1);
 		if (res == -1) {
 			int err = evutil_socket_geterror(fd);
@@ -397,6 +397,7 @@ bufferevent_socket_new(struct event_base *base, evutil_socket_t fd, int options)
 	return bufev;
 }
 
+// connect sockaddr
 int
 bufferevent_socket_connect(struct bufferevent *bev,
     const struct sockaddr *sa, int socklen)
@@ -522,6 +523,7 @@ bufferevent_connect_getaddrinfo_cb(int result, struct evutil_addrinfo *ai,
 	evutil_freeaddrinfo(ai);
 }
 
+// hostname -> sockaddr, then connect
 int
 bufferevent_socket_connect_hostname(struct bufferevent *bev,
     struct evdns_base *evdns_base, int family, const char *hostname, int port)
@@ -651,6 +653,7 @@ be_socket_flush(struct bufferevent *bev, short iotype,
 }
 
 
+// 删除旧的rw event，重新绑定fd rw event
 static void
 be_socket_setfd(struct bufferevent *bufev, evutil_socket_t fd)
 {
