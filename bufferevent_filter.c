@@ -77,14 +77,21 @@ static void bufferevent_filtered_inbuf_cb(struct evbuffer *buf,
 static void bufferevent_filtered_outbuf_cb(struct evbuffer *buf,
     const struct evbuffer_cb_info *info, void *arg);
 
+// todo: filter.bev 和 filter.underlying组成的输入输出pipe结构
+// todo: process_input: bev.input <- underlying.input
+// todo: process_output: bev.output -> underlying.output
 struct bufferevent_filtered {
 	struct bufferevent_private bev;
 
 	/** The bufferevent that we read/write filtered data from/to. */
 	struct bufferevent *underlying;
-	/** A callback on our inbuf to notice somebory removes data */
+	/** A callback on our inbuf to notice somebody removes data */
+	// bufferevent_filtered_inbuf_cb
+	// bev.bev.input.cb
 	struct evbuffer_cb_entry *inbuf_cb;
 	/** A callback on our outbuf to notice when somebody adds data */
+	// bufferevent_filtered_outbuf_cb
+	// bev.bev.output.cb
 	struct evbuffer_cb_entry *outbuf_cb;
 	/** True iff we have received an EOF callback from the underlying
 	 * bufferevent. */
@@ -93,9 +100,11 @@ struct bufferevent_filtered {
 	/** Function to free context when we're done. */
 	void (*free_context)(void *);
 	/** Input filter */
-	bufferevent_filter_cb process_in;
+	// 从底层input读到上层input的方法，过滤器
+	// 也是真正的数据移动方法
+	bufferevent_filter_cb process_in; // be_null_filter
 	/** Output filter */
-	bufferevent_filter_cb process_out;
+	bufferevent_filter_cb process_out; // be_null_filter
 	/** User-supplied argument to the filters. */
 	void *context;
 };
@@ -160,7 +169,7 @@ be_null_filter(struct evbuffer *src, struct evbuffer *dst, ev_ssize_t lim,
 	       enum bufferevent_flush_mode state, void *ctx)
 {
 	(void)state;
-	if (evbuffer_remove_buffer(src, dst, lim) == 0)
+	if (evbuffer_remove_buffer(src, dst, lim) == 0) // copy from src to dst directly
 		return BEV_OK;
 	else
 		return BEV_ERROR;
@@ -298,6 +307,8 @@ be_filter_disable(struct bufferevent *bev, short event)
 	return 0;
 }
 
+// 站在bev角度，读入到bev.input, 尽可能的读取底层所有
+// todo: try to copy from underlying.input to bev.input
 static enum bufferevent_filter_result
 be_filter_process_input(struct bufferevent_filtered *bevf,
 			enum bufferevent_flush_mode state,
@@ -310,7 +321,7 @@ be_filter_process_input(struct bufferevent_filtered *bevf,
 		/* If we're in 'normal' mode, don't urge data on the filter
 		 * unless we're reading data and under our high-water mark.*/
 		if (!(bev->enabled & EV_READ) ||
-		    be_readbuf_full(bevf, state))
+		    be_readbuf_full(bevf, state)) // 检查bev.input是否有大于high watermark的数据
 			return BEV_OK;
 	}
 
@@ -321,22 +332,24 @@ be_filter_process_input(struct bufferevent_filtered *bevf,
 			    evbuffer_get_length(bev->input);
 
 		res = bevf->process_in(bevf->underlying->input,
-		    bev->input, limit, state, bevf->context);
+		    bev->input, limit, state, bevf->context); // copy from underlying.input to bev.input
 
 		if (res == BEV_OK)
 			*processed_out = 1;
 	} while (res == BEV_OK &&
 		 (bev->enabled & EV_READ) &&
 		 evbuffer_get_length(bevf->underlying->input) &&
-		 !be_readbuf_full(bevf, state));
+		 !be_readbuf_full(bevf, state)); // underlying.input 有数据且bev.input 未满
 
 	if (*processed_out)
-		BEV_RESET_GENERIC_READ_TIMEOUT(bev);
+		BEV_RESET_GENERIC_READ_TIMEOUT(bev); // 成功copy，就添加bev.input read监听
 
 	return res;
 }
 
 
+// 站在bev角度，从bev.output全部拷贝出去,尽可能的将所有都写入底层
+// todo: try to copy from bev.output to underlying.output
 static enum bufferevent_filter_result
 be_filter_process_output(struct bufferevent_filtered *bevf,
 			 enum bufferevent_flush_mode state,
@@ -379,7 +392,7 @@ be_filter_process_output(struct bufferevent_filtered *bevf,
 			    bevf->underlying->output,
 			    limit,
 			    state,
-			    bevf->context);
+			    bevf->context); // copy from bev.output to underlying.output
 
 			if (res == BEV_OK)
 				processed = *processed_out = 1;
@@ -391,7 +404,7 @@ be_filter_process_output(struct bufferevent_filtered *bevf,
 			 * not flushing. */
 			evbuffer_get_length(bufev->output) &&
 			/* Or if we have filled the underlying output buffer. */
-			!be_underlying_writebuf_full(bevf,state));
+			!be_underlying_writebuf_full(bevf,state)); // bev.output有数据且underlying.output未满
 
 		if (processed) {
 			/* call the write callback.*/
@@ -417,6 +430,8 @@ be_filter_process_output(struct bufferevent_filtered *bevf,
 }
 
 /* Called when the size of our outbuf changes. */
+// filter.private.bufferevent.evbuffer.cb
+// bev.output有数据写入，则激活copy to underlying.output
 static void
 bufferevent_filtered_outbuf_cb(struct evbuffer *buf,
     const struct evbuffer_cb_info *cbinfo, void *arg)
@@ -434,6 +449,8 @@ bufferevent_filtered_outbuf_cb(struct evbuffer *buf,
 	}
 }
 
+// invoke another copy from underlying.input to bev.input
+// and invoke bev.readcb
 static void
 be_filter_read_nolock_(struct bufferevent *underlying, void *me_)
 {
@@ -456,14 +473,14 @@ be_filter_read_nolock_(struct bufferevent *underlying, void *me_)
 			state = BEV_NORMAL;
 
 		/* XXXX use return value */
-		res = be_filter_process_input(bevf, state, &processed_any);
+		res = be_filter_process_input(bevf, state, &processed_any); // copy in
 		(void)res;
 
 		/* XXX This should be in process_input, not here.  There are
 		 * other places that can call process-input, and they should
 		 * force readcb calls as needed. */
 		if (processed_any) {
-			bufferevent_trigger_nolock_(bufev, EV_READ, 0);
+			bufferevent_trigger_nolock_(bufev, EV_READ, 0); // call bev.readcb usercb
 			if (evbuffer_get_length(underlying->input) > 0 &&
 				be_readbuf_full(bevf, state)) {
 				/* data left in underlying buffer and filter input buffer
@@ -479,6 +496,9 @@ be_filter_read_nolock_(struct bufferevent *underlying, void *me_)
 }
 
 /* Called when the size of our inbuf changes. */
+// filter.private.bufferevent.evbuffer.cb
+// 外部数据从underlying.input -> bev.input后
+// todo: input.cb会call user.cb,并再一次copy，这会导致一直copy到对方没数据或input满为止???
 static void
 bufferevent_filtered_inbuf_cb(struct evbuffer *buf,
     const struct evbuffer_cb_info *cbinfo, void *arg)
@@ -502,7 +522,7 @@ bufferevent_filtered_inbuf_cb(struct evbuffer *buf,
 		 */
 		evbuffer_cb_clear_flags(bev->input, bevf->inbuf_cb,
 			EVBUFFER_CB_ENABLED);
-		if (evbuffer_get_length(bevf->underlying->input) > 0)
+		if (evbuffer_get_length(bevf->underlying->input) > 0) // bev.input未满且对面input还有数据,再次激活copy
 			be_filter_read_nolock_(bevf->underlying, bevf);
 	}
 
@@ -510,6 +530,8 @@ bufferevent_filtered_inbuf_cb(struct evbuffer *buf,
 }
 
 /* Called when the underlying socket has read. */
+// filter.underlying.user.cb
+// 当underlying.input中有数据写入时，触发copy
 static void
 be_filter_readcb(struct bufferevent *underlying, void *me_)
 {
@@ -525,6 +547,8 @@ be_filter_readcb(struct bufferevent *underlying, void *me_)
 
 /* Called when the underlying socket has drained enough that we can write to
    it. */
+// filter.underlying.user.cb
+// 当underlying.output中有数据写入时，after copy
 static void
 be_filter_writecb(struct bufferevent *underlying, void *me_)
 {
@@ -540,13 +564,14 @@ be_filter_writecb(struct bufferevent *underlying, void *me_)
 
 	// If our refcount is > 0
 	if (bufev_private->refcnt > 0) {
-		be_filter_process_output(bevf, BEV_NORMAL, &processed_any);
+		be_filter_process_output(bevf, BEV_NORMAL, &processed_any); // invoke copy process again
 	}
 
 	BEV_UNLOCK(bev);
 }
 
 /* Called when the underlying socket has given us an error */
+// filter.underlying.user.cb
 static void
 be_filter_eventcb(struct bufferevent *underlying, short what, void *me_)
 {

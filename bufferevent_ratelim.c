@@ -31,6 +31,7 @@
 #include <limits.h>
 #include <string.h>
 #include <stdlib.h>
+#include <values.h>
 
 #include "event2/event.h"
 #include "event2/event_struct.h"
@@ -46,6 +47,7 @@
 #include "util-internal.h"
 #include "event-internal.h"
 
+// set bucket
 int
 ev_token_bucket_init_(struct ev_token_bucket *bucket,
     const struct ev_token_bucket_cfg *cfg,
@@ -70,6 +72,8 @@ ev_token_bucket_init_(struct ev_token_bucket *bucket,
 	return 0;
 }
 
+// update bucket
+// todo: ???
 int
 ev_token_bucket_update_(struct ev_token_bucket *bucket,
     const struct ev_token_bucket_cfg *cfg,
