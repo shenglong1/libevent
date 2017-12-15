@@ -152,7 +152,7 @@ static int evbuffer_ptr_subtract(struct evbuffer *buf, struct evbuffer_ptr *pos,
 static int evbuffer_file_segment_materialize(struct evbuffer_file_segment *seg);
 static inline void evbuffer_chain_incref(struct evbuffer_chain *chain);
 
-// 新建chain
+// 新建一个chain, 多的部分用作chain.buffer
 static struct evbuffer_chain *
 evbuffer_chain_new(size_t size)
 {
@@ -169,7 +169,7 @@ evbuffer_chain_new(size_t size)
 		// 两倍扩展
 		to_alloc = MIN_BUFFER_SIZE;
 		while (to_alloc < size) {
-			to_alloc <<= 1;
+			to_alloc <<= 1; // 找到比size大的2的n次方size
 		}
 	} else {
 		to_alloc = size;
@@ -186,6 +186,7 @@ evbuffer_chain_new(size_t size)
 	/* this way we can manipulate the buffer to different addresses,
 	 * which is required for mmap for example.
 	 */
+	// chain按照evbuffer_chain format 后取下一个evbuffer_chain pointer
 	chain->buffer = EVBUFFER_CHAIN_EXTRA(unsigned char, chain);
 
 	chain->refcnt = 1;

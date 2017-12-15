@@ -41,15 +41,15 @@ struct ev_token_bucket {
 	ev_ssize_t read_limit, write_limit;
 	/** When was this bucket last updated?  Measured in abstract 'ticks'
 	 * relative to the token bucket configuration. */
-	ev_uint32_t last_updated;
+	ev_uint32_t last_updated; // last_tick
 };
 
 /** Configuration info for a token bucket or set of token buckets. */
 struct ev_token_bucket_cfg {
 	/** How many bytes are we willing to read on average per tick? */
-	size_t read_rate;
+	size_t read_rate; // 平均速率
 	/** How many bytes are we willing to read at most in any one tick? */
-	size_t read_maximum;
+	size_t read_maximum; // 最大突发速率
 	/** How many bytes are we willing to write on average per tick? */
 	size_t write_rate;
 	/** How many bytes are we willing to write at most in any one tick? */
@@ -57,6 +57,8 @@ struct ev_token_bucket_cfg {
 
 	/* How long is a tick?  Note that fractions of a millisecond are
 	 * ignored. */
+	// 每个tick的时长，用于作为refill event超时事件的超时时长
+	// 即每tick_timeout时长，invoke refill.cb 一次
 	struct timeval tick_timeout;
 
 	/* How long is a tick, in milliseconds?  Derived from tick_timeout. */

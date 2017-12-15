@@ -61,7 +61,7 @@ ev_token_bucket_init_(struct ev_token_bucket *bucket,
 		   appropriate amount of bandwidth to the bucket.
 		*/
 		if (bucket->read_limit > (ev_int64_t) cfg->read_maximum)
-			bucket->read_limit = cfg->read_maximum;
+			bucket->read_limit = cfg->read_maximum; // min
 		if (bucket->write_limit > (ev_int64_t) cfg->write_maximum)
 			bucket->write_limit = cfg->write_maximum;
 	} else {
@@ -114,6 +114,7 @@ ev_token_bucket_update_(struct ev_token_bucket *bucket,
 	return 1;
 }
 
+//
 static inline void
 bufferevent_update_buckets(struct bufferevent_private *bev)
 {
@@ -127,6 +128,7 @@ bufferevent_update_buckets(struct bufferevent_private *bev)
 		    bev->rate_limiting->cfg, tick);
 }
 
+// get current time tick
 ev_uint32_t
 ev_token_bucket_get_tick_(const struct timeval *tv,
     const struct ev_token_bucket_cfg *cfg)
@@ -143,6 +145,7 @@ ev_token_bucket_get_tick_(const struct timeval *tv,
 	return (unsigned)(msec / cfg->msec_per_tick);
 }
 
+// create and set cfg
 struct ev_token_bucket_cfg *
 ev_token_bucket_cfg_new(size_t read_rate, size_t read_burst,
     size_t write_rate, size_t write_burst,
@@ -198,6 +201,8 @@ static void bev_group_unsuspend_writing_(struct bufferevent_rate_limit_group *g)
     the maximum amount we should read if is_read.  Return that maximum, or
     0 if our bucket is wholly exhausted.
  */
+// 获得bev中当前最大读或写速率 max_so_far
+// private < private.limit.bucket < private.limit.group < min_share
 static inline ev_ssize_t
 bufferevent_get_rlim_max_(struct bufferevent_private *bev, int is_write)
 {
@@ -250,11 +255,13 @@ bufferevent_get_rlim_max_(struct bufferevent_private *bev, int is_write)
 			 * members, not the total members. */
 			share = LIM(g->rate_limit) / g->n_members;
 			if (share < g->min_share)
-				share = g->min_share;
+				share = g->min_share; // max(share, g->min_share)
 		}
 		UNLOCK_GROUP(g);
-		CLAMPTO(share);
+		CLAMPTO(share); // min(share, max_so_far)
 	}
+	// 组速率计算公式：min(max_so_far, max(share, g->min_share))
+	// max_so_far就是一个bev的速率限制, share是组限速的严格平均 group_rate_limit / n_members
 
 	if (max_so_far < 0)
 		max_so_far = 0;
@@ -273,6 +280,7 @@ bufferevent_get_write_max_(struct bufferevent_private *bev)
 	return bufferevent_get_rlim_max_(bev, 1);
 }
 
+// 减小read limit.bucket 或 limit.group.bucket 中读速率，会触发read suspend/unsuspend， 触发limit.refill监听和解除监听
 int
 bufferevent_decrement_read_buckets_(struct bufferevent_private *bev, ev_ssize_t bytes)
 {
@@ -284,6 +292,7 @@ bufferevent_decrement_read_buckets_(struct bufferevent_private *bev, ev_ssize_t 
 
 	if (bev->rate_limiting->cfg) {
 		bev->rate_limiting->limit.read_limit -= bytes;
+
 		if (bev->rate_limiting->limit.read_limit <= 0) {
 			bufferevent_suspend_read_(&bev->bev, BEV_SUSPEND_BW);
 			if (event_add(&bev->rate_limiting->refill_bucket_event,
@@ -294,6 +303,8 @@ bufferevent_decrement_read_buckets_(struct bufferevent_private *bev, ev_ssize_t 
 				event_del(&bev->rate_limiting->refill_bucket_event);
 			bufferevent_unsuspend_read_(&bev->bev, BEV_SUSPEND_BW);
 		}
+    // normal decrease read bucket, do nothing
+
 	}
 
 	if (bev->rate_limiting->group) {
@@ -311,6 +322,7 @@ bufferevent_decrement_read_buckets_(struct bufferevent_private *bev, ev_ssize_t 
 	return r;
 }
 
+// 减小write limit.bucket 或 limit.group.bucket 中读速率，会触发write suspend/unsuspend， 触发limit.refill监听和解除监听
 int
 bufferevent_decrement_write_buckets_(struct bufferevent_private *bev, ev_ssize_t bytes)
 {
@@ -350,6 +362,7 @@ bufferevent_decrement_write_buckets_(struct bufferevent_private *bev, ev_ssize_t
 }
 
 /** Stop reading on every bufferevent in <b>g</b> */
+// 挂起private.limit.group连接的所有bufferevent_private read
 static int
 bev_group_suspend_reading_(struct bufferevent_rate_limit_group *g)
 {
@@ -375,6 +388,7 @@ bev_group_suspend_reading_(struct bufferevent_rate_limit_group *g)
 }
 
 /** Stop writing on every bufferevent in <b>g</b> */
+// 挂起private.limit.group连接的所有bufferevent_private write
 static int
 bev_group_suspend_writing_(struct bufferevent_rate_limit_group *g)
 {
@@ -394,6 +408,8 @@ bev_group_suspend_writing_(struct bufferevent_rate_limit_group *g)
 
 /** Timer callback invoked on a single bufferevent with one or more exhausted
     buckets when they are ready to refill. */
+// todo: 默认的limit.refill_bucket_event.cb
+// 再次检查是否可以unsuspend read/write bufferevent, 有任意suspend，就继续event_add(refill)
 static void
 bev_refill_callback_(evutil_socket_t fd, short what, void *arg)
 {
@@ -420,14 +436,15 @@ bev_refill_callback_(evutil_socket_t fd, short what, void *arg)
 		if (bev->rate_limiting->limit.read_limit > 0)
 			bufferevent_unsuspend_read_(&bev->bev, BEV_SUSPEND_BW);
 		else
-			again = 1;
+			again = 1; // stay suspend
 	}
 	if ((bev->write_suspended & BEV_SUSPEND_BW)) {
 		if (bev->rate_limiting->limit.write_limit > 0)
 			bufferevent_unsuspend_write_(&bev->bev, BEV_SUSPEND_BW);
 		else
-			again = 1;
+			again = 1; // stay suspend
 	}
+	// read/write只要有任意一个suspend状态，就要event_add(refill)
 	if (again) {
 		/* One or more of the buckets may need another refill if they
 		   started negative.
@@ -437,12 +454,12 @@ bev_refill_callback_(evutil_socket_t fd, short what, void *arg)
 		*/
 		/* XXXX Handle event_add failure somehow */
 		event_add(&bev->rate_limiting->refill_bucket_event,
-		    &bev->rate_limiting->cfg->tick_timeout);
+		    &bev->rate_limiting->cfg->tick_timeout); // 再次监听refill
 	}
 	BEV_UNLOCK(&bev->bev);
 }
 
-/** Helper: grab a random element from a bufferevent group.
+/** Helper: grab a random bufferevent_private from a bufferevent group.
  *
  * Requires that we hold the lock on the group.
  */
@@ -529,6 +546,7 @@ bev_group_unsuspend_writing_(struct bufferevent_rate_limit_group *g)
 /** Callback invoked every tick to add more elements to the group bucket
     and unsuspend group members as needed.
  */
+// todo: group.refill.cb
 static void
 bev_group_refill_callback_(evutil_socket_t fd, short what, void *arg)
 {
@@ -536,20 +554,21 @@ bev_group_refill_callback_(evutil_socket_t fd, short what, void *arg)
 	unsigned tick;
 	struct timeval now;
 
+	// get current time
 	event_base_gettimeofday_cached(event_get_base(&g->master_refill_event), &now);
 
 	LOCK_GROUP(g);
 
 	tick = ev_token_bucket_get_tick_(&now, &g->rate_limit_cfg);
-	ev_token_bucket_update_(&g->rate_limit, &g->rate_limit_cfg, tick);
+	ev_token_bucket_update_(&g->rate_limit, &g->rate_limit_cfg, tick); // update g->bucket
 
 	if (g->pending_unsuspend_read ||
-	    (g->read_suspended && (g->rate_limit.read_limit >= g->min_share))) {
-		bev_group_unsuspend_reading_(g);
+	    (g->read_suspended && (g->rate_limit.read_limit >= g->min_share))) { // todo: ???
+		bev_group_unsuspend_reading_(g); // retry
 	}
 	if (g->pending_unsuspend_write ||
 	    (g->write_suspended && (g->rate_limit.write_limit >= g->min_share))){
-		bev_group_unsuspend_writing_(g);
+		bev_group_unsuspend_writing_(g); // retry
 	}
 
 	/* XXXX Rather than waiting to the next tick to unsuspend stuff
@@ -560,6 +579,8 @@ bev_group_refill_callback_(evutil_socket_t fd, short what, void *arg)
 	UNLOCK_GROUP(g);
 }
 
+// interface
+// init bev.rate_limiting
 int
 bufferevent_set_rate_limit(struct bufferevent *bev,
     struct ev_token_bucket_cfg *cfg)
@@ -575,6 +596,7 @@ bufferevent_set_rate_limit(struct bufferevent *bev,
 
 	BEV_LOCK(bev);
 
+	// 没有cfg 则取消当前的限速
 	if (cfg == NULL) {
 		if (bevp->rate_limiting) {
 			rlim = bevp->rate_limiting;
@@ -591,7 +613,7 @@ bufferevent_set_rate_limit(struct bufferevent *bev,
 	event_base_gettimeofday_cached(bev->ev_base, &now);
 	tick = ev_token_bucket_get_tick_(&now, cfg);
 
-	if (bevp->rate_limiting && bevp->rate_limiting->cfg == cfg) {
+	if (bevp->rate_limiting && bevp->rate_limiting->cfg == cfg) { // cfg not change, do nothing
 		/* no-op */
 		r = 0;
 		goto done;
@@ -607,7 +629,7 @@ bufferevent_set_rate_limit(struct bufferevent *bev,
 	reinit = rlim->cfg != NULL;
 
 	rlim->cfg = cfg;
-	ev_token_bucket_init_(&rlim->limit, cfg, tick, reinit);
+	ev_token_bucket_init_(&rlim->limit, cfg, tick, reinit); // set bucket by cfg
 
 	if (reinit) {
 		EVUTIL_ASSERT(event_initialized(&rlim->refill_bucket_event));
@@ -616,6 +638,7 @@ bufferevent_set_rate_limit(struct bufferevent *bev,
 	event_assign(&rlim->refill_bucket_event, bev->ev_base,
 	    -1, EV_FINALIZE, bev_refill_callback_, bevp);
 
+  // 立即check一次suspend
 	if (rlim->limit.read_limit > 0) {
 		bufferevent_unsuspend_read_(bev, BEV_SUSPEND_BW);
 	} else {
@@ -630,7 +653,7 @@ bufferevent_set_rate_limit(struct bufferevent *bev,
 	}
 
 	if (suspended)
-		event_add(&rlim->refill_bucket_event, &cfg->tick_timeout);
+		event_add(&rlim->refill_bucket_event, &cfg->tick_timeout); // send_after
 
 	r = 0;
 
@@ -656,12 +679,12 @@ bufferevent_rate_limit_group_new(struct event_base *base,
 	memcpy(&g->rate_limit_cfg, cfg, sizeof(g->rate_limit_cfg));
 	LIST_INIT(&g->members);
 
-	ev_token_bucket_init_(&g->rate_limit, cfg, tick, 0);
+	ev_token_bucket_init_(&g->rate_limit, cfg, tick, 0); // set bucket by cfg
 
 	event_assign(&g->master_refill_event, base, -1, EV_PERSIST|EV_FINALIZE,
 	    bev_group_refill_callback_, g);
 	/*XXXX handle event_add failure */
-	event_add(&g->master_refill_event, &cfg->tick_timeout);
+	event_add(&g->master_refill_event, &cfg->tick_timeout); // send_after
 
 	EVTHREAD_ALLOC_LOCK(g->lock, EVTHREAD_LOCKTYPE_RECURSIVE);
 
@@ -673,6 +696,7 @@ bufferevent_rate_limit_group_new(struct event_base *base,
 	return g;
 }
 
+// set group.bucket by cfg
 int
 bufferevent_rate_limit_group_set_cfg(
 	struct bufferevent_rate_limit_group *g,
@@ -704,6 +728,7 @@ bufferevent_rate_limit_group_set_cfg(
 	return 0;
 }
 
+// set group.configured_min_share and group.min_share(会被group.cfg调整)
 int
 bufferevent_rate_limit_group_set_min_share(
 	struct bufferevent_rate_limit_group *g,
@@ -736,6 +761,7 @@ bufferevent_rate_limit_group_free(struct bufferevent_rate_limit_group *g)
 	mm_free(g);
 }
 
+// bev 加入group
 int
 bufferevent_add_to_rate_limit_group(struct bufferevent *bev,
     struct bufferevent_rate_limit_group *g)
@@ -745,6 +771,7 @@ bufferevent_add_to_rate_limit_group(struct bufferevent *bev,
 	    EVUTIL_UPCAST(bev, struct bufferevent_private, bev);
 	BEV_LOCK(bev);
 
+	// bevp 没有限速，则创建个rate_limiting
 	if (!bevp->rate_limiting) {
 		struct bufferevent_rate_limit *rlim;
 		rlim = mm_calloc(1, sizeof(struct bufferevent_rate_limit));
@@ -761,14 +788,18 @@ bufferevent_add_to_rate_limit_group(struct bufferevent *bev,
 		BEV_UNLOCK(bev);
 		return 0;
 	}
+
+	// unregister from old group
 	if (bevp->rate_limiting->group)
 		bufferevent_remove_from_rate_limit_group(bev);
 
+  // register to new group
 	LOCK_GROUP(g);
 	bevp->rate_limiting->group = g;
 	++g->n_members;
-	LIST_INSERT_HEAD(&g->members, bevp, rate_limiting->next_in_group);
+	LIST_INSERT_HEAD(&g->members, bevp, rate_limiting->next_in_group); // todo: bevp register to group
 
+	// group suspend状态作用到bevp
 	rsuspend = g->read_suspended;
 	wsuspend = g->write_suspended;
 
@@ -783,6 +814,7 @@ bufferevent_add_to_rate_limit_group(struct bufferevent *bev,
 	return 0;
 }
 
+// private 离开一个group
 int
 bufferevent_remove_from_rate_limit_group(struct bufferevent *bev)
 {
@@ -908,6 +940,7 @@ bufferevent_get_max_single_write(struct bufferevent *bev)
 	return r;
 }
 
+// 获得当前最大读速率
 ev_ssize_t
 bufferevent_get_max_to_read(struct bufferevent *bev)
 {
@@ -918,6 +951,7 @@ bufferevent_get_max_to_read(struct bufferevent *bev)
 	return r;
 }
 
+// 获得当前最大写速率
 ev_ssize_t
 bufferevent_get_max_to_write(struct bufferevent *bev)
 {
@@ -972,6 +1006,7 @@ bufferevent_rate_limit_group_get_write_limit(
 	return r;
 }
 
+// private.limit.bucket read减速或加速, 加速时可能会触发unsuspend
 int
 bufferevent_decrement_read_limit(struct bufferevent *bev, ev_ssize_t decr)
 {
@@ -999,6 +1034,7 @@ bufferevent_decrement_read_limit(struct bufferevent *bev, ev_ssize_t decr)
 	return r;
 }
 
+// private.limit.bucket write减速或加速, 加速时可能会触发unsuspend
 int
 bufferevent_decrement_write_limit(struct bufferevent *bev, ev_ssize_t decr)
 {
@@ -1028,6 +1064,7 @@ bufferevent_decrement_write_limit(struct bufferevent *bev, ev_ssize_t decr)
 	return r;
 }
 
+// group 减速或加速
 int
 bufferevent_rate_limit_group_decrement_read(
 	struct bufferevent_rate_limit_group *grp, ev_ssize_t decr)
@@ -1048,6 +1085,7 @@ bufferevent_rate_limit_group_decrement_read(
 	return r;
 }
 
+// group 减速或加速
 int
 bufferevent_rate_limit_group_decrement_write(
 	struct bufferevent_rate_limit_group *grp, ev_ssize_t decr)

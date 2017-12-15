@@ -96,10 +96,12 @@ struct bufferevent_rate_limit_group {
 	/** True iff we were unable to suspend one of the bufferevents in the
 	 * group for reading the last time we tried, and we should try
 	 * again. */
+	// 在group unsuspend read时，至少一个bev无法unsuspend
 	unsigned pending_unsuspend_read : 1;
 	/** True iff we were unable to suspend one of the bufferevents in the
 	 * group for writing the last time we tried, and we should try
 	 * again. */
+	// 在group unsuspend write时，至少一个bev无法unsuspend
 	unsigned pending_unsuspend_write : 1;
 
 	/*@{*/
@@ -114,8 +116,8 @@ struct bufferevent_rate_limit_group {
 
 	/** The smallest number of bytes that any member of the group should
 	 * be limited to read or write at a time. */
-	ev_ssize_t min_share;
-	ev_ssize_t configured_min_share;
+	ev_ssize_t min_share; // 被cfg 拉小的实际configured_min_share
+	ev_ssize_t configured_min_share; // 外部设置的min_share
 
 	/** Timeout event that goes off once a tick, when the bucket is ready
 	 * to refill. */
@@ -150,6 +152,8 @@ struct bufferevent_rate_limit {
 
 	/* Timeout event used when one this bufferevent's buckets are
 	 * empty. */
+  // 只要bufferevent中任何read或write suspend，就要添加该event监听
+	// refill event.cb实际是每次tick时检查是否能unsuspend的cb
 	struct event refill_bucket_event;
 };
 

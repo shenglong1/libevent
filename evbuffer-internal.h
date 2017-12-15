@@ -117,10 +117,10 @@ struct evbuffer {
 	unsigned own_lock : 1;
 	/** True iff we should not allow changes to the front of the buffer
 	 * (drains or prepends). */
-	unsigned freeze_start : 1;
+	unsigned freeze_start : 1; // 1: forbid drain
 	/** True iff we should not allow changes to the end of the buffer
 	 * (appends) */
-	unsigned freeze_end : 1;
+	unsigned freeze_end : 1; // 1: forbid write into
 	/** True iff this evbuffer's callbacks are not invoked immediately
 	 * upon a change in the buffer, but instead are deferred to be invoked
 	 * from the event_base's loop.	Useful for preventing enormous stack
