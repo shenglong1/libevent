@@ -53,6 +53,7 @@ extern "C" {
 #include <event2/util.h>
 /* For struct event */
 #include <event2/event_struct.h>
+#include "bufferevent.h"
 
 struct event_watermark {
 	size_t low; // 表示低于这个值就不能从其中拿数据

@@ -235,7 +235,7 @@ be_pair_outbuf_cb(struct evbuffer *outbuf,
 	decref_and_unlock(downcast(bev_pair));
 }
 
-// enable 并不会监听两侧event，而是立即尝试transfer
+// enable 超时监听本侧event，而是立即尝试transfer
 static int
 be_pair_enable(struct bufferevent *bufev, short events)
 {

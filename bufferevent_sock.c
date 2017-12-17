@@ -218,7 +218,7 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 		goto error;
 
 	// 速率相关操作
-	bufferevent_decrement_read_buckets_(bufev_p, res);
+	bufferevent_decrement_read_buckets_(bufev_p, res); // 已经读取了res数据，则减小剩余可读量，rate
 
 	/* Invoke the user callback - must always be called last */
   // invoke bufferevent.readcb(user.cb)
@@ -394,6 +394,7 @@ bufferevent_socket_new(struct event_base *base, evutil_socket_t fd, int options)
 	evbuffer_add_cb(bufev->output, bufferevent_socket_outbuf_cb, bufev); // 加一个evbuffer_cb_entry到evbuffer.callback
 
 	// 关闭fd 对evbuf的读写
+  // input/output都是freeze fd一侧
 	evbuffer_freeze(bufev->input, 0); // 读缓冲锁住尾部
 	evbuffer_freeze(bufev->output, 1); // 写缓冲锁住头部
 

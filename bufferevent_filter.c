@@ -46,6 +46,8 @@
 
 #ifdef _WIN32
 #include <winsock2.h>
+#include <event2/bufferevent.h>
+
 #endif
 
 #include "event2/util.h"
@@ -190,7 +192,7 @@ bufferevent_filter_new(struct bufferevent *underlying,
 		return NULL;
 
 	if (!input_filter)
-		input_filter = be_null_filter;
+		input_filter = be_null_filter; // use default filter
 	if (!output_filter)
 		output_filter = be_null_filter;
 

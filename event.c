@@ -54,6 +54,8 @@
 #include <limits.h>
 #include <values.h>
 #include <evrpc.h>
+#include <event2/event.h>
+#include <event2/event_struct.h>
 
 #include "event2/event.h"
 #include "event2/event_struct.h"

@@ -32,6 +32,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <values.h>
+#include <evdns.h>
+#include <event2/event.h>
 
 #include "event2/event.h"
 #include "event2/event_struct.h"
@@ -72,7 +74,7 @@ ev_token_bucket_init_(struct ev_token_bucket *bucket,
 	return 0;
 }
 
-// update bucket
+// update bucket by cfg
 // todo: ???
 int
 ev_token_bucket_update_(struct ev_token_bucket *bucket,
@@ -234,6 +236,8 @@ bufferevent_get_rlim_max_(struct bufferevent_private *bev, int is_write)
 		bufferevent_update_buckets(bev);
 		max_so_far = LIM(bev->rate_limiting->limit);
 	}
+
+	// todo: group.share 限制max_so_far
 	if (bev->rate_limiting->group) {
 		struct bufferevent_rate_limit_group *g =
 		    bev->rate_limiting->group;
@@ -258,7 +262,7 @@ bufferevent_get_rlim_max_(struct bufferevent_private *bev, int is_write)
 				share = g->min_share; // max(share, g->min_share)
 		}
 		UNLOCK_GROUP(g);
-		CLAMPTO(share); // min(share, max_so_far)
+		CLAMPTO(share); // max_so_far = min(share, max_so_far)
 	}
 	// 组速率计算公式：min(max_so_far, max(share, g->min_share))
 	// max_so_far就是一个bev的速率限制, share是组限速的严格平均 group_rate_limit / n_members
@@ -581,6 +585,7 @@ bev_group_refill_callback_(evutil_socket_t fd, short what, void *arg)
 
 // interface
 // init bev.rate_limiting
+// 可以多次call
 int
 bufferevent_set_rate_limit(struct bufferevent *bev,
     struct ev_token_bucket_cfg *cfg)
