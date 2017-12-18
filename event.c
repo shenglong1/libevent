@@ -3748,6 +3748,7 @@ event_base_foreach_event_nolock_(struct event_base *base,
 
 /* Helper for event_base_dump_events: called on each event in the event base;
  * dumps only the inserted events. */
+// print one event
 static int
 dump_inserted_event_fn(const struct event_base *base, const struct event *e, void *arg)
 {
@@ -3781,6 +3782,7 @@ dump_inserted_event_fn(const struct event_base *base, const struct event *e, voi
 
 /* Helper for event_base_dump_events: called on each event in the event base;
  * dumps only the active events. */
+// print one event
 static int
 dump_active_event_fn(const struct event_base *base, const struct event *e, void *arg)
 {

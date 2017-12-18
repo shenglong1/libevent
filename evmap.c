@@ -547,6 +547,7 @@ typedef int (*evmap_io_foreach_fd_cb)(
  * Note that there is no guarantee that the file descriptors will be processed
  * in any particular order.
  */
+// 遍历注册队列evmap 每个entry, fn 遍历entry中每个event
 static int
 evmap_io_foreach_fd(struct event_base *base,
     evmap_io_foreach_fd_cb fn,
@@ -586,6 +587,7 @@ typedef int (*evmap_signal_foreach_signal_cb)(
  * If fn returns 0, continue on to the next signal. Otherwise, return the same
  * value that fn returned.
  */
+// 遍历注册队列中每个entry
 static int
 evmap_signal_foreach_signal(struct event_base *base,
     evmap_signal_foreach_signal_cb fn,
@@ -1026,6 +1028,7 @@ struct evmap_foreach_event_helper {
 
 /* Helper for evmap_foreach_event_: calls a provided function on every event
  * pending on a given fd.  */
+// 遍历entry.evmap_io中每一个event
 static int
 evmap_io_foreach_event_fn(struct event_base *base, evutil_socket_t fd,
     struct evmap_io *io_info, void *arg)
@@ -1042,6 +1045,7 @@ evmap_io_foreach_event_fn(struct event_base *base, evutil_socket_t fd,
 
 /* Helper for evmap_foreach_event_: calls a provided function on every event
  * pending on a given signal.  */
+// 遍历一个entry中每个event
 static int
 evmap_signal_foreach_event_fn(struct event_base *base, int signum,
     struct evmap_signal *sig_info, void *arg)
