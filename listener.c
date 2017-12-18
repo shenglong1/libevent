@@ -78,7 +78,7 @@ struct evconnlistener_ops {
 struct evconnlistener {
 	const struct evconnlistener_ops *ops; // backend
 	void *lock; // mutex
-	evconnlistener_cb cb; // real cb
+	evconnlistener_cb cb; // todo: real cb, call after accpet
 	evconnlistener_errorcb errorcb; // real error cb
 	void *user_data; // cb_args
 	unsigned flags; // lfd opt
@@ -88,7 +88,7 @@ struct evconnlistener {
 };
 
 struct evconnlistener_event {
-	struct evconnlistener base;
+	struct evconnlistener base; // user info
 	struct event listener; // listen_fd + default_cb
 };
 
@@ -113,6 +113,7 @@ evconnlistener_new_async(struct event_base *base,
     evconnlistener_cb cb, void *ptr, unsigned flags, int backlog,
     evutil_socket_t fd); /* XXXX export this? */
 
+// ops.fun
 static int event_listener_enable(struct evconnlistener *);
 static int event_listener_disable(struct evconnlistener *);
 static void event_listener_destroy(struct evconnlistener *);
@@ -144,6 +145,7 @@ listener_decref_and_unlock(struct evconnlistener *listener)
 	}
 }
 
+// evconnlistener_event.event 操作方法
 static const struct evconnlistener_ops evconnlistener_event_ops = {
 		// handle evconnlistener
 	event_listener_enable,
@@ -157,6 +159,7 @@ static const struct evconnlistener_ops evconnlistener_event_ops = {
 static void listener_read_cb(evutil_socket_t, short, void *);
 
 // listen, create fd-event
+// listen and monitor listenfd
 struct evconnlistener *
 evconnlistener_new(struct event_base *base,
     evconnlistener_cb cb, void *ptr, unsigned flags, int backlog,
@@ -267,7 +270,7 @@ err:
 	return NULL;
 }
 
-// 显示调用
+// interface调用
 void
 evconnlistener_free(struct evconnlistener *lev)
 {
@@ -291,6 +294,7 @@ event_listener_destroy(struct evconnlistener *lev)
 	event_debug_unassign(&lev_e->listener);
 }
 
+// outer interface
 int
 evconnlistener_enable(struct evconnlistener *lev)
 {
@@ -392,6 +396,8 @@ evconnlistener_set_error_cb(struct evconnlistener *lev,
 	UNLOCK(lev);
 }
 
+// todo: ???
+// todo: accept and call user.cb
 // listen_fd signled, accept
 static void
 listener_read_cb(evutil_socket_t fd, short what, void *p)
