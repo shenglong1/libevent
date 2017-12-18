@@ -46,6 +46,7 @@
 #include <signal.h>
 #include <string.h>
 #include <time.h>
+#include <event2/event.h>
 
 #include "event-internal.h"
 #include "evmap-internal.h"
