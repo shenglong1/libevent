@@ -59,6 +59,7 @@ struct evhttp_connection {
 	evutil_socket_t fd;
 	struct bufferevent *bufev;
 
+	// evhttp_connection_retry
 	struct event retry_ev;		/* for retrying connects */
 
 	char *bind_address;		/* address to use for binding the src */
@@ -94,6 +95,8 @@ struct evhttp_connection {
 
 	TAILQ_HEAD(evcon_requestq, evhttp_request) requests;
 
+	// invoke 当con.bev监听的写可写时
+	// user.write_cb
 	void (*cb)(struct evhttp_connection *, void *);
 	void *cb_arg;
 
@@ -166,8 +169,11 @@ struct evhttp {
 
 	/* Fallback callback if all the other callbacks for this connection
 	   don't match. */
+  // default cb for connection
 	void (*gencb)(struct evhttp_request *req, void *);
 	void *gencbarg;
+
+  // method to create bufferevent
 	struct bufferevent* (*bevcb)(struct event_base *, void *);
 	void *bevcbarg;
 

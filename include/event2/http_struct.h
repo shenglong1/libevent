@@ -88,8 +88,8 @@ struct {
 	/* cache of the hostname for evhttp_request_get_host */
 	char *host_cache;
 
-	enum evhttp_request_kind kind;
-	enum evhttp_cmd_type type;
+	enum evhttp_request_kind kind; // request/response
+	enum evhttp_cmd_type type; // get/post
 
 	size_t headers_size;
 	size_t body_size;
@@ -97,9 +97,11 @@ struct {
 	char *uri;			/* uri after HTTP request was parsed */
 	struct evhttp_uri *uri_elems;	/* uri elements */
 
+	// version
 	char major;			/* HTTP Major number */
 	char minor;			/* HTTP Minor number */
 
+	// 回复的code和描述
 	int response_code;		/* HTTP Response code */
 	char *response_code_line;	/* Readable response */
 
@@ -111,6 +113,7 @@ struct {
 	struct evbuffer *output_buffer;	/* outgoing post or data */
 
 	/* Callback */
+	// 有错误时，也会invoke
 	void (*cb)(struct evhttp_request *, void *);
 	void *cb_arg;
 

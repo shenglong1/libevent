@@ -202,6 +202,7 @@ static int evhttp_find_vhost(struct evhttp *http, struct evhttp **outhttp,
 #ifndef EVENT__HAVE_STRSEP
 /* strsep replacement for platforms that lack it.  Only works if
  * del is one character long. */
+// todo: ???
 static char *
 strsep(char **s, const char *del)
 {
@@ -253,6 +254,7 @@ html_replace(const char ch, const char **escaped)
  * The returned string needs to be freed by the caller.
  */
 
+// 用html_replace 替换整个html
 char *
 evhttp_htmlescape(const char *html)
 {
@@ -263,6 +265,7 @@ evhttp_htmlescape(const char *html)
 	if (html == NULL)
 		return (NULL);
 
+	// 先空跑一遍算new_size
 	old_size = strlen(html);
 	for (i = 0; i < old_size; ++i) {
 		const char *replaced = NULL;
@@ -282,6 +285,7 @@ evhttp_htmlescape(const char *html)
 		           (unsigned long)(new_size + 1));
 		return (NULL);
 	}
+  // 依次替换
 	for (i = 0; i < old_size; ++i) {
 		const char *replaced = &html[i];
 		const size_t len = html_replace(html[i], &replaced);
@@ -379,12 +383,14 @@ evhttp_write_buffer(struct evhttp_connection *evcon,
 	bufferevent_enable(evcon->bufev, EV_WRITE);
 }
 
+// stop monitor write
 static void
 evhttp_send_continue_done(struct evhttp_connection *evcon, void *arg)
 {
 	bufferevent_disable(evcon->bufev, EV_WRITE);
 }
 
+// 告诉客户端继续发送，server继续监听read
 static void
 evhttp_send_continue(struct evhttp_connection *evcon,
 			struct evhttp_request *req)
@@ -396,8 +402,8 @@ evhttp_send_continue(struct evhttp_connection *evcon,
 	evcon->cb = evhttp_send_continue_done;
 	evcon->cb_arg = NULL;
 	bufferevent_setcb(evcon->bufev,
-	    evhttp_read_cb,
-	    evhttp_write_cb,
+	    evhttp_read_cb, // read and parse
+	    evhttp_write_cb, // terminate
 	    evhttp_error_cb,
 	    evcon);
 }
@@ -425,6 +431,9 @@ evhttp_connected(struct evhttp_connection *evcon)
  * the request's header list, and writes the request line to the
  * connection's output buffer.
  */
+// 生成request 状态行
+// 状态行写到con.bev.output buff
+// Content-Length 写到request.output_headers
 static void
 evhttp_make_header_request(struct evhttp_connection *evcon,
     struct evhttp_request *req)
@@ -440,7 +449,7 @@ evhttp_make_header_request(struct evhttp_connection *evcon,
 
 	evbuffer_add_printf(bufferevent_get_output(evcon->bufev),
 	    "%s %s HTTP/%d.%d\r\n",
-	    method, req->uri, req->major, req->minor);
+	    method, req->uri, req->major, req->minor); // 状态行写到output buf
 
 	/* Add the content length on a post or put request if missing */
 	if ((req->type == EVHTTP_REQ_POST || req->type == EVHTTP_REQ_PUT) &&
@@ -467,6 +476,7 @@ evhttp_is_connection_close(int flags, struct evkeyvalq* headers)
 		return (connection != NULL && evutil_ascii_strcasecmp(connection, "close") == 0);
 	}
 }
+// 只要有一侧是Connection:close，就返回true
 static int
 evhttp_is_request_connection_close(struct evhttp_request *req)
 {
@@ -485,6 +495,7 @@ evhttp_is_connection_keepalive(struct evkeyvalq* headers)
 }
 
 /* Add a correct "Date" header to headers, unless it already has one. */
+// keyvalue中没有date，就尝试添加date
 static void
 evhttp_maybe_add_date_header(struct evkeyvalq *headers)
 {
@@ -515,6 +526,9 @@ evhttp_maybe_add_content_length_header(struct evkeyvalq *headers,
  * Create the headers needed for an HTTP reply in req->output_headers,
  * and write the first HTTP response for req line to evcon.
  */
+// 生成response状态行
+// 状态行写到con.bev.output
+// header写到output_header
 static void
 evhttp_make_header_response(struct evhttp_connection *evcon,
     struct evhttp_request *req)
@@ -571,6 +585,7 @@ evhttp_make_header_response(struct evhttp_connection *evcon,
 }
 
 enum expect { NO, CONTINUE, OTHER };
+// todo: ???
 static enum expect evhttp_have_expect(struct evhttp_request *req, int input)
 {
 	const char *expect;
@@ -590,6 +605,8 @@ static enum expect evhttp_have_expect(struct evhttp_request *req, int input)
 /** Generate all headers appropriate for sending the http request in req (or
  * the response, if we're sending a response), and write them to evcon's
  * bufferevent. Also writes all data from req->output_buffer */
+// 总的header maker，其中区分request或response,
+// 并最终将整个output_headers写入bev.output
 static void
 evhttp_make_header(struct evhttp_connection *evcon, struct evhttp_request *req)
 {
@@ -600,18 +617,23 @@ evhttp_make_header(struct evhttp_connection *evcon, struct evhttp_request *req)
 	 * Depending if this is a HTTP request or response, we might need to
 	 * add some new headers or remove existing headers.
 	 */
+	// first line in output buff
 	if (req->kind == EVHTTP_REQUEST) {
-		evhttp_make_header_request(evcon, req);
+		evhttp_make_header_request(evcon, req); // write con.bev.output_buff & req.output_headers
 	} else {
 		evhttp_make_header_response(evcon, req);
 	}
 
+	// key value line in output buff
 	TAILQ_FOREACH(header, req->output_headers, next) {
 		evbuffer_add_printf(output, "%s: %s\r\n",
 		    header->key, header->value);
 	}
+
+	// empty line in output buff
 	evbuffer_add(output, "\r\n", 2);
 
+	// todo: ???
 	if (evhttp_have_expect(req, 0) != CONTINUE &&
 		evbuffer_get_length(req->output_buffer)) {
 		/*
@@ -641,6 +663,7 @@ evhttp_connection_set_max_body_size(struct evhttp_connection* evcon,
 		evcon->max_body_size = new_max_body_size;
 }
 
+// return -1 当遇到无法恢复的错误时
 static int
 evhttp_connection_incoming_fail(struct evhttp_request *req,
     enum evhttp_request_error error)
@@ -664,6 +687,7 @@ evhttp_connection_incoming_fail(struct evhttp_request *req,
 		 * the request is still being used for sending, we
 		 * need to disassociated it from the connection here.
 		 */
+    // 从con.request列表中删除req
 		if (!req->userdone) {
 			/* remove it so that it will not be freed */
 			TAILQ_REMOVE(&req->evcon->requests, req, next);
@@ -707,6 +731,7 @@ evhttp_request_free_auto(struct evhttp_request *req)
 		evhttp_request_free(req);
 }
 
+// 从conn中释放一个req
 static void
 evhttp_request_free_(struct evhttp_connection *evcon, struct evhttp_request *req)
 {
@@ -718,6 +743,7 @@ evhttp_request_free_(struct evhttp_connection *evcon, struct evhttp_request *req
  * given in error. If it's an outgoing connection, reset the connection,
  * retry any pending requests, and inform the user.  If it's incoming,
  * delegates to evhttp_connection_incoming_fail(). */
+// todo: ???
 void
 evhttp_connection_fail_(struct evhttp_connection *evcon,
     enum evhttp_request_error error)
@@ -742,10 +768,11 @@ evhttp_connection_fail_(struct evhttp_connection *evcon,
 		 * reply before the connection can be freed.
 		 */
 		if (evhttp_connection_incoming_fail(req, error) == -1)
-			evhttp_connection_free(evcon);
+			evhttp_connection_free(evcon); // fatal error
 		return;
 	}
 
+	// normal error
 	error_cb = req->error_cb;
 	error_cb_arg = req->cb_arg;
 	/* when the request was canceled, the callback is not executed */
@@ -1110,7 +1137,7 @@ evhttp_read_body(struct evhttp_connection *evcon, struct evhttp_request *req)
 /*
  * Gets called when more data becomes available
  */
-
+// todo: invoke when conn.bev can read
 static void
 evhttp_read_cb(struct bufferevent *bufev, void *arg)
 {
@@ -1121,6 +1148,7 @@ evhttp_read_cb(struct bufferevent *bufev, void *arg)
 	event_deferred_cb_cancel_(get_deferred_queue(evcon),
 	    &evcon->read_more_deferred_cb);
 
+  // todo: 根据读取状态解压
 	switch (evcon->state) {
 	case EVCON_READING_FIRSTLINE:
 		evhttp_read_firstline(evcon, req);
@@ -1173,6 +1201,7 @@ evhttp_deferred_read_cb(struct event_callback *cb, void *data)
 	evhttp_read_cb(evcon->bufev, evcon);
 }
 
+// 真正的send方法
 static void
 evhttp_write_connectioncb(struct evhttp_connection *evcon, void *arg)
 {
@@ -1278,6 +1307,8 @@ evhttp_connection_set_local_port(struct evhttp_connection *evcon,
 	evcon->bind_port = port;
 }
 
+// make header in bev.output
+// monitor write
 static void
 evhttp_request_dispatch(struct evhttp_connection* evcon)
 {
@@ -1344,7 +1375,7 @@ evhttp_connection_reset_(struct evhttp_connection *evcon)
 	err = evbuffer_drain(tmp, -1);
 	EVUTIL_ASSERT(!err && "drain input");
 
-	evcon->flags &= ~EVHTTP_CON_READING_ERROR;
+	evcon->flags &= ~EVHTTP_CON_READING_ERROR; // 清除reading_error 标志
 
 	evcon->state = EVCON_DISCONNECTED;
 }
@@ -1374,6 +1405,7 @@ evhttp_connection_retry(evutil_socket_t fd, short what, void *arg)
 	evhttp_connection_connect_(evcon);
 }
 
+// todo: ??? conn连接失败时call, retry
 static void
 evhttp_connection_cb_cleanup(struct evhttp_connection *evcon)
 {
@@ -1536,6 +1568,7 @@ evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 /*
  * Event callback for asynchronous connection attempt.
  */
+// 看起来像con连接成功时 call到这里
 static void
 evhttp_connection_cb(struct bufferevent *bufev, short what, void *arg)
 {
@@ -1880,7 +1913,7 @@ evhttp_clear_headers(struct evkeyvalq *headers)
  * Returns 0,  if the header was successfully removed.
  * Returns -1, if the header could not be found.
  */
-
+// remove key in evkeyvalq list
 int
 evhttp_remove_header(struct evkeyvalq *headers, const char *key)
 {
@@ -2519,6 +2552,8 @@ evhttp_connection_get_addr(struct evhttp_connection *evcon)
 	return bufferevent_socket_get_conn_address_(evcon->bufev);
 }
 
+// todo: connect server ?
+/* We are trying the next request that was queued on us */
 int
 evhttp_connection_connect_(struct evhttp_connection *evcon)
 {
@@ -2553,7 +2588,7 @@ evhttp_connection_connect_(struct evhttp_connection *evcon)
 	bufferevent_setcb(evcon->bufev,
 	    NULL /* evhttp_read_cb */,
 	    NULL /* evhttp_write_cb */,
-	    evhttp_connection_cb,
+	    evhttp_connection_cb, // bev连接失败时invoke ???
 	    evcon);
 	if (!evutil_timerisset(&evcon->timeout)) {
 		const struct timeval conn_tv = { HTTP_CONNECT_TIMEOUT, 0 };
