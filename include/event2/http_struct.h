@@ -105,8 +105,9 @@ struct {
 	int response_code;		/* HTTP Response code */
 	char *response_code_line;	/* Readable response */
 
+	// body 放在这里
 	struct evbuffer *input_buffer;	/* read data */
-	ev_int64_t ntoread;
+	ev_int64_t ntoread; // 下次要读取到input_buffer中的字节数
 	unsigned chunked:1,		/* a chunked request */
 	    userdone:1;			/* the user has sent all data */
 

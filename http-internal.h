@@ -81,6 +81,7 @@ struct evhttp_connection {
  * EVHTTP_CON_READ_ON_WRITE_ERROR */
 #define EVHTTP_CON_READING_ERROR	(EVHTTP_CON_AUTOFREE << 1)
 
+  // 这个timeout和bev.timeout一致
 	struct timeval timeout;		/* timeout for events */
 	int retry_cnt;			/* retry count */
 	int retry_max;			/* maximum number of retries */
@@ -93,6 +94,7 @@ struct evhttp_connection {
 	/* for server connections, the http server they are connected with */
 	struct evhttp *http_server;
 
+	// req 注册队列
 	TAILQ_HEAD(evcon_requestq, evhttp_request) requests;
 
 	// invoke 当con.bev监听的写可写时

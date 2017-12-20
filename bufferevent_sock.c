@@ -441,7 +441,7 @@ bufferevent_socket_connect(struct bufferevent *bev,
 			goto done;
 		} else
 #endif
-		r = evutil_socket_connect_(&fd, sa, socklen);
+		r = evutil_socket_connect_(&fd, sa, socklen); // socket(optional) connect
 		if (r < 0)
 			goto freesock;
 	}
@@ -457,7 +457,7 @@ bufferevent_socket_connect(struct bufferevent *bev,
   // 下面监听fd 可写事件来看connect是否完成
 	bufferevent_setfd(bev, fd);
 	if (r == 0) {
-		// 暂时没连上，添加监听
+		// 暂时没连上，需要重试，添加监听
 		if (! be_socket_enable(bev, EV_WRITE)) {
 			bufev_p->connecting = 1;
 			result = 0;
@@ -470,6 +470,7 @@ bufferevent_socket_connect(struct bufferevent *bev,
 		bufev_p->connecting = 1;
 		event_active(&bev->ev_write, EV_WRITE, 1);
 	} else {
+		// connect error
 		/* The connect failed already.  How very BSD of it. */
 		bufev_p->connection_refused = 1;
 		bufev_p->connecting = 1;
