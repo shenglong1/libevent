@@ -81,11 +81,12 @@ struct evhttp_connection {
  * EVHTTP_CON_READ_ON_WRITE_ERROR */
 #define EVHTTP_CON_READING_ERROR	(EVHTTP_CON_AUTOFREE << 1)
 
-  // 这个timeout和bev.timeout一致
+	// 这个timeout和bev.timeout一致
 	struct timeval timeout;		/* timeout for events */
 	int retry_cnt;			/* retry count */
 	int retry_max;			/* maximum number of retries */
-	struct timeval initial_retry_timeout; /* Timeout for low long to wait
+	struct timeval initial_retry_timeout;
+	/* Timeout for low long to wait
 					       * after first failing attempt
 					       * before retry */
 
@@ -97,19 +98,21 @@ struct evhttp_connection {
 	// req 注册队列
 	TAILQ_HEAD(evcon_requestq, evhttp_request) requests;
 
-	// invoke 当con.bev监听的写可写时
-	// user.write_cb
+	// invoke 当con.bev写fd结束时
+  // evhttp_write_connectioncb 写结束后转移到读
+	// evhttp_send_done
 	void (*cb)(struct evhttp_connection *, void *);
 	void *cb_arg;
 
 	void (*closecb)(struct evhttp_connection *, void *);
 	void *closecb_arg;
 
+	// evhttp_deferred_read_cb
 	struct event_callback read_more_deferred_cb;
 
 	struct event_base *base;
 	struct evdns_base *dns_base;
-	int ai_family;
+	int ai_family; // AF_INET ?
 };
 
 /* A callback for an http server */
@@ -171,11 +174,11 @@ struct evhttp {
 
 	/* Fallback callback if all the other callbacks for this connection
 	   don't match. */
-  // default cb for connection
+	// default cb for connection
 	void (*gencb)(struct evhttp_request *req, void *);
 	void *gencbarg;
 
-  // method to create bufferevent
+	// method to create bufferevent
 	struct bufferevent* (*bevcb)(struct event_base *, void *);
 	void *bevcbarg;
 
@@ -193,7 +196,7 @@ int evhttp_connection_connect_(struct evhttp_connection *);
 enum evhttp_request_error;
 /* notifies the current request that it failed; resets connection */
 void evhttp_connection_fail_(struct evhttp_connection *,
-    enum evhttp_request_error error);
+														 enum evhttp_request_error error);
 
 enum message_read_status;
 
@@ -208,6 +211,6 @@ void evhttp_response_code_(struct evhttp_request *, int, const char *);
 void evhttp_send_page_(struct evhttp_request *, struct evbuffer *);
 
 int evhttp_decode_uri_internal(const char *uri, size_t length,
-    char *ret, int decode_plus);
+															 char *ret, int decode_plus);
 
 #endif /* _HTTP_H */

@@ -106,15 +106,18 @@ struct {
 	char *response_code_line;	/* Readable response */
 
 	// body 放在这里
+  // request or response receive
 	struct evbuffer *input_buffer;	/* read data */
 	ev_int64_t ntoread; // 下次要读取到input_buffer中的字节数
 	unsigned chunked:1,		/* a chunked request */
 	    userdone:1;			/* the user has sent all data */
 
+	// request or response send, body data
 	struct evbuffer *output_buffer;	/* outgoing post or data */
 
 	/* Callback */
 	// 有错误时，也会invoke
+	// evhttp_handle_request
 	void (*cb)(struct evhttp_request *, void *);
 	void *cb_arg;
 
@@ -130,6 +133,7 @@ struct {
 	 * (shoutcast) metadata from the http header. If return
 	 * int is negative the connection will be closed.
 	 */
+	// call after parse header in bev.input_buff
 	int (*header_cb)(struct evhttp_request *, void *);
 
 	/*
