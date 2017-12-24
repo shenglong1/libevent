@@ -85,6 +85,10 @@
 #endif
 #ifdef EVENT__HAVE_FCNTL_H
 #include <fcntl.h>
+#include <event2/http.h>
+#include <evdns.h>
+#include <event2/bufferevent.h>
+
 #endif
 
 #undef timeout_pending
@@ -4274,7 +4278,7 @@ struct evbuffer *evhttp_request_get_output_buffer(struct evhttp_request *req)
  * Takes a file descriptor to read a request from.
  * The callback is executed once the whole request has been read.
  */
-
+// create conn by evhttp
 static struct evhttp_connection*
 evhttp_get_request_connection(
 		struct evhttp* http,
@@ -4358,6 +4362,7 @@ evhttp_associate_new_request_with_connection(struct evhttp_connection *evcon)
 	return (0);
 }
 
+// 新建并绑定conn-req
 static void
 evhttp_get_request(struct evhttp *http, evutil_socket_t fd,
 									 struct sockaddr *sa, ev_socklen_t salen)
@@ -4387,12 +4392,13 @@ evhttp_get_request(struct evhttp *http, evutil_socket_t fd,
 		evhttp_connection_free(evcon);
 }
 
-
+/****************************** inner func *******************************/
 /*
  * Network helper functions that we do not want to export to the rest of
  * the world.
  */
 
+// ntop
 static void
 name_from_addr(struct sockaddr *sa, ev_socklen_t salen,
 							 char **phost, char **pport)
@@ -4604,6 +4610,7 @@ regname_ok(const char *s, const char *eos)
 	return 1;
 }
 
+// port string to int
 static int
 parse_port(const char *s, const char *eos)
 {
@@ -4810,6 +4817,7 @@ evhttp_uri_parse(const char *source_uri)
 	return evhttp_uri_parse_with_flags(source_uri, 0);
 }
 
+// 完整的first line uri parse， 略
 struct evhttp_uri *
 evhttp_uri_parse_with_flags(const char *source_uri, unsigned flags)
 {
@@ -4957,6 +4965,7 @@ evhttp_uri_free(struct evhttp_uri *uri)
 #undef URI_FREE_STR_
 }
 
+// make whole string uri from evhttp_uri
 char *
 evhttp_uri_join(struct evhttp_uri *uri, char *buf, size_t limit)
 {
@@ -5021,6 +5030,7 @@ evhttp_uri_join(struct evhttp_uri *uri, char *buf, size_t limit)
 #undef URI_ADD_
 }
 
+/********************************* make uri helper fun **************************/
 const char *
 evhttp_uri_get_scheme(const struct evhttp_uri *uri)
 {
