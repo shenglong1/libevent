@@ -406,7 +406,7 @@ evhttp_send_continue(struct evhttp_connection *evcon,
 	evbuffer_add_printf(bufferevent_get_output(evcon->bufev),
 											"HTTP/%d.%d 100 Continue\r\n\r\n",
 											req->major, req->minor);
-	evcon->cb = evhttp_send_continue_done;
+	evcon->cb = evhttp_send_continue_done; // disable write
 	evcon->cb_arg = NULL;
 	bufferevent_setcb(evcon->bufev,
 										evhttp_read_cb, // read and parse
@@ -605,6 +605,8 @@ static enum expect evhttp_have_expect(struct evhttp_request *req, int input)
 	if (!expect)
 		return NO;
 
+	// todo: error ?
+	// return evutil_ascii_strcasecmp(expect, "100-continue") ? CONTINUE : OTHER;
 	return !evutil_ascii_strcasecmp(expect, "100-continue") ? CONTINUE : OTHER;
 }
 
@@ -615,6 +617,7 @@ static enum expect evhttp_have_expect(struct evhttp_request *req, int input)
 // 总的header maker，其中区分request或response,
 // 并最终将整个output_headers写入bev.output
 // todo: 进入bev.output_buff的优先级：req.uri/method/version > req.output_header > req.output_buff
+// todo: write from req to conn
 static void
 evhttp_make_header(struct evhttp_connection *evcon, struct evhttp_request *req)
 {
@@ -844,10 +847,11 @@ evhttp_write_cb(struct bufferevent *bufev, void *arg)
  * - If this is an incoming connection, we've just processed the request;
  *   respond.
  */
-// 一个单向流程结束，比如request send结束，或receive request结束
-// outgoing(send) 结束会触发释放req甚至是conn
+// 一个单向流程结束, 或receive request结束, 或send reply 结束
+// outgoing(reply) 结束会触发释放req甚至是conn
 // ingoing(receive) 只会触发write
 // todo: 所以receive -> send看做一组操作
+// 实际是本端作为server时 的读写转换
 static void
 evhttp_connection_done(struct evhttp_connection *evcon)
 {
@@ -894,6 +898,7 @@ evhttp_connection_done(struct evhttp_connection *evcon)
 		 * incoming connection - we need to leave the request on the
 		 * connection so that we can reply to it.
 		 */
+		// receive 切换到write
 		evcon->state = EVCON_WRITING;
 	}
 
@@ -931,6 +936,7 @@ evhttp_connection_done(struct evhttp_connection *evcon)
  */
 // read body
 // todo: read from buf to req.input_buff ???
+// 一次性读完一段变长数据
 static enum message_read_status
 evhttp_handle_chunked_read(struct evhttp_request *req, struct evbuffer *buf)
 {
@@ -952,7 +958,7 @@ evhttp_handle_chunked_read(struct evhttp_request *req, struct evbuffer *buf)
 			return DATA_CORRUPTED;
 		}
 
-		// 没有ntoread，即不知道下次要读多少，则先peek一下，获得ntoread
+		// 没有ntoread，即不知道下次要读多少，则先peek一下，获得ntoread, 调整req.body_size
 		if (req->ntoread < 0) {
 			/* Read chunk size */
 			ev_int64_t ntoread; // 读取的字节数
@@ -966,7 +972,7 @@ evhttp_handle_chunked_read(struct evhttp_request *req, struct evbuffer *buf)
 				mm_free(p);
 				continue;
 			}
-			ntoread = evutil_strtoll(p, &endp, 16);
+			ntoread = evutil_strtoll(p, &endp, 16); // read chunk size
 			error = (*p == '\0' ||
 							 (*endp != '\0' && *endp != ' ') ||
 							 ntoread < 0);
@@ -989,14 +995,13 @@ evhttp_handle_chunked_read(struct evhttp_request *req, struct evbuffer *buf)
 
 			req->body_size += (size_t)ntoread;
 			req->ntoread = ntoread;
-			if (req->ntoread == 0) {
+			if (req->ntoread == 0) { // 表示是最后一块
 				/* Last chunk */
 				return (ALL_DATA_READ);
 			}
 			continue;
 		}
 
-		// 已知下次读取多少
 		/* req->ntoread is signed int64, len is ssize_t, based on arch,
 		 * ssize_t could only be 32b, check for these conditions */
 		if (req->ntoread > EV_SSIZE_MAX) {
@@ -1007,6 +1012,7 @@ evhttp_handle_chunked_read(struct evhttp_request *req, struct evbuffer *buf)
 		if (req->ntoread > 0 && buflen < (ev_uint64_t)req->ntoread)
 			return (MORE_DATA_EXPECTED);
 
+		// 已知下次读取多少,就开始读
 		/* Completed chunk */
 		evbuffer_remove_buffer(buf, req->input_buffer, (size_t)req->ntoread); // read ntoread bytes
 		req->ntoread = -1; // reset ntoread
@@ -1014,6 +1020,7 @@ evhttp_handle_chunked_read(struct evhttp_request *req, struct evbuffer *buf)
 		if (req->chunk_cb != NULL) {
 			req->flags |= EVHTTP_REQ_DEFER_FREE;
 			(*req->chunk_cb)(req, req->cb_arg);
+      // todo: chunk_cb后就删除req.input_buffer???
 			evbuffer_drain(req->input_buffer,
 										 evbuffer_get_length(req->input_buffer));
 			req->flags &= ~EVHTTP_REQ_DEFER_FREE;
@@ -1165,6 +1172,7 @@ evhttp_read_body(struct evhttp_connection *evcon, struct evhttp_request *req)
  */
 // todo: invoke when conn.bev can read
 // parse to con.bev.input_buff
+// todo: receive from conn to req
 static void
 evhttp_read_cb(struct bufferevent *bufev, void *arg)
 {
@@ -2260,7 +2268,7 @@ evhttp_get_body(struct evhttp_connection *evcon, struct evhttp_request *req)
 	/* If this is a request without a body, then we are done */
 	if (req->kind == EVHTTP_REQUEST &&
 			!evhttp_method_may_have_body(req->type)) {
-		evhttp_connection_done(evcon);
+		evhttp_connection_done(evcon); // 仅是读写转换
 		return;
 	}
 	evcon->state = EVCON_READING_BODY;
@@ -2276,7 +2284,7 @@ evhttp_get_body(struct evhttp_connection *evcon, struct evhttp_request *req)
 		if (req->kind == EVHTTP_REQUEST && req->ntoread < 1) {
 			/* An incoming request with no content-length and no
 			 * transfer-encoding has no body. */
-			evhttp_connection_done(evcon);
+			evhttp_connection_done(evcon); // read end 读写转换
 			return;
 		}
 	}
