@@ -1159,7 +1159,7 @@ evhttp_read_body(struct evhttp_connection *evcon, struct evhttp_request *req)
 		// read complete
 		bufferevent_disable(evcon->bufev, EV_READ);
 		/* Completed content length */
-		evhttp_connection_done(evcon);
+		evhttp_connection_done(evcon); // 读写转换
 		return;
 	}
 }
@@ -1239,6 +1239,7 @@ evhttp_deferred_read_cb(struct event_callback *cb, void *data)
 // todo: bev.output_buff 发送到fd后(bev.event_write.cb完成的), 会call到这里
 // call by evhttp_write_cb, when send to fd is done
 // 写到读的转移函数
+// 同时状态转移，EVHTTP_REQUEST -> EVHTTP_RESPONSE
 static void
 evhttp_write_connectioncb(struct evhttp_connection *evcon, void *arg)
 {
@@ -1252,7 +1253,7 @@ evhttp_write_connectioncb(struct evhttp_connection *evcon, void *arg)
 	/* We need to wait until we've written all of our output data before we can
 	 * continue */
 	if (evbuffer_get_length(output) > 0)
-		return;
+		return; // 完全写完才转换状态
 
 	/* We are done writing our header and are now expecting the response */
 	req->kind = EVHTTP_RESPONSE;
@@ -1263,7 +1264,7 @@ evhttp_write_connectioncb(struct evhttp_connection *evcon, void *arg)
 /*
  * Clean up a connection object
  */
-
+// 以con为中心释放，最多不超过1级
 void
 evhttp_connection_free(struct evhttp_connection *evcon)
 {
@@ -1346,6 +1347,7 @@ evhttp_connection_set_local_port(struct evhttp_connection *evcon,
 	evcon->bind_port = port;
 }
 
+// todo: send request的第一步
 // make header and send
 // client连接server成功时,准备好bev.outbuf中要发的request，开启读监听,设置好bev.writecb和conn.cb
 static void
@@ -1366,7 +1368,7 @@ evhttp_request_dispatch(struct evhttp_connection* evcon)
 	evcon->state = EVCON_WRITING;
 
 	/* Create the header from the store arguments */
-	evhttp_make_header(evcon, req); // outbuf中准备好request
+	evhttp_make_header(evcon, req); // bev.outbuf中准备好request
 
 	evhttp_write_buffer(evcon, evhttp_write_connectioncb, NULL); // enable write & set writecb & set conn.cb
 }
@@ -1422,6 +1424,7 @@ evhttp_connection_reset_(struct evhttp_connection *evcon)
 	evcon->state = EVCON_DISCONNECTED;
 }
 
+// error 会触发read & write
 static void
 evhttp_connection_start_detectclose(struct evhttp_connection *evcon)
 {
@@ -1455,6 +1458,7 @@ evhttp_connection_cb_cleanup(struct evhttp_connection *evcon)
 	struct evcon_requestq requests;
 
 	evhttp_connection_reset_(evcon);
+	// retry process
 	if (evcon->retry_max < 0 || evcon->retry_cnt < evcon->retry_max) {
 		struct timeval tv_retry = evcon->initial_retry_timeout;
 		int i;
@@ -1484,15 +1488,16 @@ evhttp_connection_cb_cleanup(struct evhttp_connection *evcon)
 	 * the queue.
 	 */
 	TAILQ_INIT(&requests);
-	while (TAILQ_FIRST(&evcon->requests) != NULL) {
+	while (TAILQ_FIRST(&evcon->requests) != NULL) { // todo: ???
 		struct evhttp_request *request = TAILQ_FIRST(&evcon->requests);
 		TAILQ_REMOVE(&evcon->requests, request, next);
 		TAILQ_INSERT_TAIL(&requests, request, next);
 	}
 
 	/* for now, we just signal all requests by executing their callbacks */
-	while (TAILQ_FIRST(&requests) != NULL) {
+	while (TAILQ_FIRST(&requests) != NULL) { // todo: ???
 		struct evhttp_request *request = TAILQ_FIRST(&requests);
+		// 双向解绑req-con
 		TAILQ_REMOVE(&requests, request, next);
 		request->evcon = NULL;
 
@@ -2806,6 +2811,7 @@ evhttp_start_read_(struct evhttp_connection *evcon)
 	/* If there's still data pending, process it next time through the
 	 * loop.  Don't do it now; that could get recusive. */
 	if (evbuffer_get_length(bufferevent_get_input(evcon->bufev))) {
+		// 强行手动触发一次con.deferred_cb来读取
 		event_deferred_cb_schedule_(get_deferred_queue(evcon),
 																&evcon->read_more_deferred_cb);
 	}

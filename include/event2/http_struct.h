@@ -126,6 +126,7 @@ struct {
 	 * specified.  If not specified, all the data is delivered via
 	 * the regular callback.
 	 */
+  // chunk模式下每次read成功就call chunk_cb并drain req.input_buffer
 	void (*chunk_cb)(struct evhttp_request *, void *);
 
 	/*
