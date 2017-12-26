@@ -54,19 +54,21 @@ extern "C" {
  * WARNING: expect this structure to change.  I will try to provide
  * reasonable accessors.
  */
+// req 代表一个req/res双向的完整过程并无方向概念
+// 加上read/write才有方向概念
 struct evhttp_request {
 #if defined(TAILQ_ENTRY)
-	TAILQ_ENTRY(evhttp_request) next;
+		TAILQ_ENTRY(evhttp_request) next;
 #else
-struct {
+		struct {
 	struct evhttp_request *tqe_next;
 	struct evhttp_request **tqe_prev;
 }       next;
 #endif
 
-	/* the connection object that this request belongs to */
-	struct evhttp_connection *evcon;
-	int flags;
+		/* the connection object that this request belongs to */
+		struct evhttp_connection *evcon;
+		int flags;
 /** The request obj owns the evhttp connection and needs to free it */
 #define EVHTTP_REQ_OWN_CONNECTION	0x0001
 /** Request was made via a proxy */
@@ -78,82 +80,86 @@ struct {
 /** The request should be freed upstack */
 #define EVHTTP_REQ_NEEDS_FREE		0x0010
 
-	struct evkeyvalq *input_headers;
-	struct evkeyvalq *output_headers;
+		struct evkeyvalq *input_headers;
+		struct evkeyvalq *output_headers;
 
-	/* address of the remote host and the port connection came from */
-	char *remote_host;
-	ev_uint16_t remote_port;
+		/* address of the remote host and the port connection came from */
+		char *remote_host;
+		ev_uint16_t remote_port;
 
-	/* cache of the hostname for evhttp_request_get_host */
-	char *host_cache;
+		/* cache of the hostname for evhttp_request_get_host */
+		char *host_cache;
 
-	enum evhttp_request_kind kind; // request/response
-	enum evhttp_cmd_type type; // get/post
+		// kind表示当前req是req/res,并无方向概念
+		// 即req既可以是收到的req，也可以是发出的req,始终是第一消息；
+		// res 既可以是收到的res，也可以是发出的res，始终是第二消息；
+		enum evhttp_request_kind kind; // request/response
+		enum evhttp_cmd_type type; // get/post
 
-	size_t headers_size;
-	size_t body_size;
+		size_t headers_size;
+		size_t body_size;
 
-	char *uri;			/* uri after HTTP request was parsed */
-	struct evhttp_uri *uri_elems;	/* uri elements */
+		char *uri;			/* uri after HTTP request was parsed */
+		struct evhttp_uri *uri_elems;	/* uri elements */
 
-	// version
-	char major;			/* HTTP Major number */
-	char minor;			/* HTTP Minor number */
+		// version
+		char major;			/* HTTP Major number */
+		char minor;			/* HTTP Minor number */
 
-	// 回复的code和描述
-	int response_code;		/* HTTP Response code */
-	char *response_code_line;	/* Readable response */
+		// 回复的code和描述
+		int response_code;		/* HTTP Response code */
+		char *response_code_line;	/* Readable response */
 
-	// body 放在这里
-  // request or response receive
-	struct evbuffer *input_buffer;	/* read data */
+		// body 放在这里
+		// request or response receive
+		struct evbuffer *input_buffer;	/* read data */
 
-	// 非chunk模式下，就是当前header中得到的content-length
-	// 下次要读取到input_buffer中的chunk分组字节数
-	ev_int64_t ntoread;
-	unsigned chunked:1,		/* a chunked request */
-	    userdone:1;			/* the user has sent all data */
+		// 非chunk模式下，就是当前header中得到的content-length
+		// 下次要读取到input_buffer中的chunk分组字节数
+		ev_int64_t ntoread;
+		unsigned chunked:1,		/* a chunked request */
+						userdone:1;			/* the user has sent all data */
 
-	// request or response send, body data
-	struct evbuffer *output_buffer;	/* outgoing post or data */
+		// request or response send, body data
+		struct evbuffer *output_buffer;	/* outgoing post or data */
 
-	/* Callback */
-	// 有错误时，也会invoke
-	// evhttp_handle_request
-	void (*cb)(struct evhttp_request *, void *);
-	void *cb_arg;
+		/* Callback */
+		// 有错误时，也会invoke
+		// evhttp_handle_request
+		void (*cb)(struct evhttp_request *, void *);
+		void *cb_arg;
 
-	/*
-	 * Chunked data callback - call for each completed chunk if
-	 * specified.  If not specified, all the data is delivered via
-	 * the regular callback.
-	 */
-  // chunk模式下每次read成功就call chunk_cb并drain req.input_buffer
-	void (*chunk_cb)(struct evhttp_request *, void *);
+		/*
+     * Chunked data callback - call for each completed chunk if
+     * specified.  If not specified, all the data is delivered via
+     * the regular callback.
+     */
+		// chunk模式下每次read成功就call chunk_cb并drain req.input_buffer
+		void (*chunk_cb)(struct evhttp_request *, void *);
 
-	/*
-	 * Callback added for forked-daapd so they can collect ICY
-	 * (shoutcast) metadata from the http header. If return
-	 * int is negative the connection will be closed.
-	 */
-	// call after parse header in bev.input_buff
-	int (*header_cb)(struct evhttp_request *, void *);
+		/*
+     * Callback added for forked-daapd so they can collect ICY
+     * (shoutcast) metadata from the http header. If return
+     * int is negative the connection will be closed.
+     */
+		// call after parse header in bev.input_buf
+		// 每次parse header读入后触发
+		int (*header_cb)(struct evhttp_request *, void *);
 
-	/*
-	 * Error callback - called when error is occured.
-	 * @see evhttp_request_error for error types.
-	 *
-	 * @see evhttp_request_set_error_cb()
-	 */
-	void (*error_cb)(enum evhttp_request_error, void *);
+		/*
+     * Error callback - called when error is occured.
+     * @see evhttp_request_error for error types.
+     *
+     * @see evhttp_request_set_error_cb()
+     */
+		void (*error_cb)(enum evhttp_request_error, void *);
 
-	/*
-	 * Send complete callback - called when the request is actually
-	 * sent and completed.
-	 */
-	void (*on_complete_cb)(struct evhttp_request *, void *);
-	void *on_complete_cb_arg;
+		/*
+     * Send complete callback - called when the request is actually
+     * sent and completed.
+     */
+		void (*on_complete_cb)(struct evhttp_request *, void *);
+		void *on_complete_cb_arg;
 };
 
 #ifdef __cplusplus

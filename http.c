@@ -178,11 +178,11 @@ static evutil_socket_t bind_socket_ai(struct evutil_addrinfo *, int reuse);
 static evutil_socket_t bind_socket(const char *, ev_uint16_t, int reuse);
 static void name_from_addr(struct sockaddr *, ev_socklen_t, char **, char **);
 static int evhttp_associate_new_request_with_connection(
-		struct evhttp_connection *evcon);
+				struct evhttp_connection *evcon);
 static void evhttp_connection_start_detectclose(
-		struct evhttp_connection *evcon);
+				struct evhttp_connection *evcon);
 static void evhttp_connection_stop_detectclose(
-		struct evhttp_connection *evcon);
+				struct evhttp_connection *evcon);
 static void evhttp_request_dispatch(struct evhttp_connection* evcon);
 static void evhttp_read_firstline(struct evhttp_connection *evcon,
 																	struct evhttp_request *req);
@@ -488,8 +488,8 @@ static int
 evhttp_is_request_connection_close(struct evhttp_request *req)
 {
 	return
-			evhttp_is_connection_close(req->flags, req->input_headers) ||
-			evhttp_is_connection_close(req->flags, req->output_headers);
+					evhttp_is_connection_close(req->flags, req->input_headers) ||
+					evhttp_is_connection_close(req->flags, req->output_headers);
 }
 
 /* Return true iff 'headers' contains 'Connection: keep-alive' */
@@ -566,8 +566,8 @@ evhttp_make_header_response(struct evhttp_connection *evcon,
 			 * persistent connections to work.
 			 */
 			evhttp_maybe_add_content_length_header(
-					req->output_headers,
-					evbuffer_get_length(req->output_buffer));
+							req->output_headers,
+							evbuffer_get_length(req->output_buffer));
 		}
 	}
 
@@ -1020,7 +1020,7 @@ evhttp_handle_chunked_read(struct evhttp_request *req, struct evbuffer *buf)
 		if (req->chunk_cb != NULL) {
 			req->flags |= EVHTTP_REQ_DEFER_FREE;
 			(*req->chunk_cb)(req, req->cb_arg);
-      // todo: chunk_cb后就删除req.input_buffer???
+			// todo: chunk_cb后就删除req.input_buffer???
 			evbuffer_drain(req->input_buffer,
 										 evbuffer_get_length(req->input_buffer));
 			req->flags &= ~EVHTTP_REQ_DEFER_FREE;
@@ -1069,7 +1069,7 @@ evhttp_lingering_close(struct evhttp_connection *evcon,
 	req->body_size += n;
 
 	event_debug(("Request body is too long, left " EV_I64_FMT,
-			EV_I64_ARG(req->ntoread)));
+					EV_I64_ARG(req->ntoread)));
 
 	evbuffer_drain(buf, n);
 	if (!req->ntoread)
@@ -1523,7 +1523,7 @@ evhttp_connection_read_on_write_error(struct evhttp_connection *evcon,
 
 	req->kind = EVHTTP_RESPONSE;
 
-  // 清空bev.outbuff
+	// 清空bev.outbuff
 	buf = bufferevent_get_output(evcon->bufev);
 	evbuffer_unfreeze(buf, 1);
 	evbuffer_drain(buf, evbuffer_get_length(buf));
@@ -1534,6 +1534,7 @@ evhttp_connection_read_on_write_error(struct evhttp_connection *evcon,
 }
 
 // todo: 错误处理cb
+// bev.user.cb
 static void
 evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 {
@@ -1547,9 +1548,9 @@ evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 		case EVCON_CONNECTING:
 			if (what & BEV_EVENT_TIMEOUT) {
 				event_debug(("%s: connection timeout for \"%s:%d\" on "
-												EV_SOCK_FMT,
-														__func__, evcon->address, evcon->port,
-														EV_SOCK_ARG(evcon->fd)));
+														EV_SOCK_FMT,
+																		__func__, evcon->address, evcon->port,
+																		EV_SOCK_ARG(evcon->fd)));
 				evhttp_connection_cb_cleanup(evcon);
 				return;
 			}
@@ -1645,7 +1646,7 @@ evhttp_connection_cb(struct bufferevent *bufev, short what, void *arg)
 
 	if (evcon->fd == -1) {
 		event_debug(("%s: bufferevent_getfd returned -1",
-				__func__));
+						__func__));
 		goto cleanup;
 	}
 
@@ -1653,24 +1654,24 @@ evhttp_connection_cb(struct bufferevent *bufev, short what, void *arg)
 	if (getsockopt(evcon->fd, SOL_SOCKET, SO_ERROR, (void*)&error,
 								 &errsz) == -1) {
 		event_debug(("%s: getsockopt for \"%s:%d\" on "EV_SOCK_FMT,
-				__func__, evcon->address, evcon->port,
-				EV_SOCK_ARG(evcon->fd)));
+						__func__, evcon->address, evcon->port,
+						EV_SOCK_ARG(evcon->fd)));
 		goto cleanup;
 	}
 
 	if (error) {
 		event_debug(("%s: connect failed for \"%s:%d\" on "
-										EV_SOCK_FMT": %s",
-						__func__, evcon->address, evcon->port,
-						EV_SOCK_ARG(evcon->fd),
-						evutil_socket_error_to_string(error)));
+												EV_SOCK_FMT": %s",
+										__func__, evcon->address, evcon->port,
+										EV_SOCK_ARG(evcon->fd),
+										evutil_socket_error_to_string(error)));
 		goto cleanup;
 	}
 
 	/* We are connected to the server now */
 	event_debug(("%s: connected to \"%s:%d\" on "EV_SOCK_FMT"\n",
-			__func__, evcon->address, evcon->port,
-			EV_SOCK_ARG(evcon->fd)));
+					__func__, evcon->address, evcon->port,
+					EV_SOCK_ARG(evcon->fd)));
 
 	/* Reset the retry count as we were successful in connecting */
 	evcon->retry_cnt = 0;
@@ -1722,7 +1723,7 @@ evhttp_parse_http_version(const char *version, struct evhttp_request *req)
 	int n = sscanf(version, "HTTP/%d.%d%c", &major, &minor, &ch);
 	if (n != 2 || major > 1) {
 		event_debug(("%s: bad version %s on message %p from %s",
-				__func__, version, req, req->remote_host));
+						__func__, version, req, req->remote_host));
 		return (-1);
 	}
 	req->major = major;
@@ -1752,7 +1753,7 @@ evhttp_parse_response_line(struct evhttp_request *req, char *line)
 	req->response_code = atoi(number);
 	if (!evhttp_valid_response_code(req->response_code)) {
 		event_debug(("%s: bad response code \"%s\"",
-				__func__, number));
+						__func__, number));
 		return (-1);
 	}
 
@@ -1901,7 +1902,7 @@ evhttp_parse_request_line(struct evhttp_request *req, char *line)
 
 	if ((int)type == EVHTTP_REQ_UNKNOWN_) {
 		event_debug(("%s: bad method %s on request %p from %s",
-				__func__, method, req, req->remote_host));
+						__func__, method, req, req->remote_host));
 		/* No error yet; we'll give a better error later when
      * we see that req->type is unsupported. */
 	}
@@ -2220,7 +2221,7 @@ evhttp_get_body_length(struct evhttp_request *req)
 					 evutil_ascii_strcasecmp(connection, "Close") != 0) {
 		/* Bad combination, we don't know when it will end */
 		event_warnx("%s: we got no content length, but the "
-										"server wants to keep the connection open: %s.",
+												"server wants to keep the connection open: %s.",
 								__func__, connection);
 		return (-1);
 	} else if (content_length == NULL) {
@@ -2230,15 +2231,15 @@ evhttp_get_body_length(struct evhttp_request *req)
 		ev_int64_t ntoread = evutil_strtoll(content_length, &endp, 10);
 		if (*content_length == '\0' || *endp != '\0' || ntoread < 0) {
 			event_debug(("%s: illegal content length: %s",
-					__func__, content_length));
+							__func__, content_length));
 			return (-1);
 		}
 		req->ntoread = ntoread;
 	}
 
 	event_debug(("%s: bytes to read: "EV_I64_FMT" (in buffer "EV_SIZE_FMT")\n",
-			__func__, EV_I64_ARG(req->ntoread),
-			EV_SIZE_ARG(evbuffer_get_length(bufferevent_get_input(req->evcon->bufev)))));
+					__func__, EV_I64_ARG(req->ntoread),
+					EV_SIZE_ARG(evbuffer_get_length(bufferevent_get_input(req->evcon->bufev)))));
 
 	return (0);
 }
@@ -2284,6 +2285,7 @@ evhttp_get_body(struct evhttp_connection *evcon, struct evhttp_request *req)
 		req->chunked = 1;
 		req->ntoread = -1;
 	} else {
+		// 非chunk
 		if (evhttp_get_body_length(req) == -1) {
 			evhttp_connection_fail_(evcon, EVREQ_HTTP_INVALID_HEADER);
 			return;
@@ -2307,6 +2309,7 @@ evhttp_get_body(struct evhttp_connection *evcon, struct evhttp_request *req)
          now, just optimistically tell the client to
          send their message body. */
 			if (req->ntoread > 0) {
+				// 读取 或要读取的body过大
 				/* ntoread is ev_int64_t, max_body_size is ev_uint64_t */
 				if ((req->evcon->max_body_size <= EV_INT64_MAX) &&
 						(ev_uint64_t)req->ntoread > req->evcon->max_body_size) {
@@ -2323,6 +2326,7 @@ evhttp_get_body(struct evhttp_connection *evcon, struct evhttp_request *req)
 		case NO: break;
 	}
 
+	// 上面都是错误情况处理，来到这才真正的read
 	evhttp_read_body(evcon, req);
 	/* note the request may have been freed in evhttp_read_body */
 }
@@ -2338,7 +2342,7 @@ evhttp_read_firstline(struct evhttp_connection *evcon,
 	if (res == DATA_CORRUPTED || res == DATA_TOO_LONG) {
 		/* Error while reading, terminate */
 		event_debug(("%s: bad header lines on "EV_SOCK_FMT"\n",
-				__func__, EV_SOCK_ARG(evcon->fd)));
+						__func__, EV_SOCK_ARG(evcon->fd)));
 		evhttp_connection_fail_(evcon, EVREQ_HTTP_INVALID_HEADER);
 		return;
 	} else if (res == MORE_DATA_EXPECTED) {
@@ -2363,7 +2367,7 @@ evhttp_read_header(struct evhttp_connection *evcon,
 	if (res == DATA_CORRUPTED || res == DATA_TOO_LONG) {
 		/* Error while reading, terminate */
 		event_debug(("%s: bad header lines on "EV_SOCK_FMT"\n",
-				__func__, EV_SOCK_ARG(fd)));
+						__func__, EV_SOCK_ARG(fd)));
 		evhttp_connection_fail_(evcon, EVREQ_HTTP_INVALID_HEADER);
 		return;
 	} else if (res == MORE_DATA_EXPECTED) {
@@ -2383,7 +2387,7 @@ evhttp_read_header(struct evhttp_connection *evcon,
 	switch (req->kind) {
 		case EVHTTP_REQUEST:
 			event_debug(("%s: checking for post data on "EV_SOCK_FMT"\n",
-					__func__, EV_SOCK_ARG(fd)));
+							__func__, EV_SOCK_ARG(fd)));
 			evhttp_get_body(evcon, req);
 			/* note the request may have been freed in evhttp_get_body */
 			break;
@@ -2399,14 +2403,15 @@ evhttp_read_header(struct evhttp_connection *evcon,
 				return;
 			}
 			if (!evhttp_response_needs_body(req)) {
+				// res have no body
 				event_debug(("%s: skipping body for code %d\n",
-						__func__, req->response_code));
-				evhttp_connection_done(evcon);
+								__func__, req->response_code));
+				evhttp_connection_done(evcon); // 读转写
 			} else {
-        // response have body, read
+				// response have body, read
 				event_debug(("%s: start of read body for %s on "
-												EV_SOCK_FMT"\n",
-								__func__, req->remote_host, EV_SOCK_ARG(fd)));
+														EV_SOCK_FMT"\n",
+												__func__, req->remote_host, EV_SOCK_ARG(fd)));
 				evhttp_get_body(evcon, req);
 				/* note the request may have been freed in
          * evhttp_get_body */
@@ -2438,6 +2443,7 @@ evhttp_connection_new(const char *address, ev_uint16_t port)
 	return (evhttp_connection_base_new(NULL, NULL, address, port));
 }
 
+// create conn
 // conn 如何和bev结合的
 // 并没有connect，没建立fd
 struct evhttp_connection *
@@ -2491,9 +2497,9 @@ evhttp_connection_base_bufferevent_new(struct event_base *base, struct evdns_bas
 
 	// create a deferred cb
 	event_deferred_cb_init_(
-			&evcon->read_more_deferred_cb,
-			bufferevent_get_priority(bev),
-			evhttp_deferred_read_cb, evcon);
+					&evcon->read_more_deferred_cb,
+					bufferevent_get_priority(bev),
+					evhttp_deferred_read_cb, evcon);
 
 	evcon->dns_base = dnsbase;
 	evcon->ai_family = AF_UNSPEC;
@@ -2531,6 +2537,7 @@ void evhttp_connection_set_family(struct evhttp_connection *evcon,
 	evcon->ai_family = family;
 }
 
+// todo: ???
 int evhttp_connection_set_flags(struct evhttp_connection *evcon,
 																int flags)
 {
@@ -2563,8 +2570,10 @@ evhttp_connection_set_timeout(struct evhttp_connection *evcon,
 															int timeout_in_secs)
 {
 	if (timeout_in_secs == -1)
+		// reset
 		evhttp_connection_set_timeout_tv(evcon, NULL);
 	else {
+		// set
 		struct timeval tv;
 		tv.tv_sec = timeout_in_secs;
 		tv.tv_usec = 0;
@@ -2577,9 +2586,11 @@ evhttp_connection_set_timeout_tv(struct evhttp_connection *evcon,
 																 const struct timeval* tv)
 {
 	if (tv) {
+		// set
 		evcon->timeout = *tv;
 		bufferevent_set_timeouts(evcon->bufev, &evcon->timeout, &evcon->timeout);
 	} else {
+		// reset
 		const struct timeval read_tv = { HTTP_READ_TIMEOUT, 0 };
 		const struct timeval write_tv = { HTTP_WRITE_TIMEOUT, 0 };
 		evutil_timerclear(&evcon->timeout);
@@ -2592,8 +2603,10 @@ evhttp_connection_set_initial_retry_tv(struct evhttp_connection *evcon,
 																			 const struct timeval *tv)
 {
 	if (tv) {
+		// set
 		evcon->initial_retry_timeout = *tv;
 	} else {
+		// reset
 		evutil_timerclear(&evcon->initial_retry_timeout);
 		evcon->initial_retry_timeout.tv_sec = 2;
 	}
@@ -2629,6 +2642,8 @@ evhttp_connection_get_addr(struct evhttp_connection *evcon)
 }
 
 // todo: connect server ?
+// 在con建立后，建立sockfd，连接server，绑定con-fd
+//
 /* We are trying the next request that was queued on us */
 int
 evhttp_connection_connect_(struct evhttp_connection *evcon)
@@ -2649,10 +2664,10 @@ evhttp_connection_connect_(struct evhttp_connection *evcon)
 	// socket + bind
 	if (evcon->bind_address || evcon->bind_port) {
 		evcon->fd = bind_socket(
-				evcon->bind_address, evcon->bind_port, 0 /*reuse*/);
+						evcon->bind_address, evcon->bind_port, 0 /*reuse*/);
 		if (evcon->fd == -1) {
 			event_debug(("%s: failed to bind to \"%s\"",
-					__func__, evcon->bind_address));
+							__func__, evcon->bind_address));
 			return (-1);
 		}
 
@@ -2776,7 +2791,7 @@ evhttp_cancel_request(struct evhttp_request *req)
 			 * the connection.
 			 */
 			evhttp_connection_fail_(evcon,
-															EVREQ_HTTP_REQUEST_CANCEL);
+															EVREQ_HTTP_REQUEST_CANCEL); // clear req, even con
 
 			/* connection fail freed the request */
 			return;
@@ -2830,7 +2845,8 @@ evhttp_start_write_(struct evhttp_connection *evcon)
 	evhttp_write_buffer(evcon, evhttp_write_connectioncb, NULL);
 }
 
-// 写结束后由bev.user.cb call到这里, 释放conn
+// todo: 这是server端send结束的方法？因为最终会建立新的r-req
+// 写结束后由bev.user.cb call到这里, 释放req
 static void
 evhttp_send_done(struct evhttp_connection *evcon, void *arg)
 {
@@ -2843,9 +2859,9 @@ evhttp_send_done(struct evhttp_connection *evcon, void *arg)
 	}
 
 	need_close =
-			(REQ_VERSION_BEFORE(req, 1, 1) &&
-			 !evhttp_is_connection_keepalive(req->input_headers)) ||
-			evhttp_is_request_connection_close(req);
+					(REQ_VERSION_BEFORE(req, 1, 1) &&
+					 !evhttp_is_connection_keepalive(req->input_headers)) ||
+					evhttp_is_request_connection_close(req);
 
 	EVUTIL_ASSERT(req->flags & EVHTTP_REQ_OWN_CONNECTION);
 	evhttp_request_free(req);
@@ -2899,6 +2915,7 @@ evhttp_send_error(struct evhttp_request *req, int error, const char *reason)
 /* Requires that headers and response code are already set up */
 // databuf 添加到req.output_buff，最终和整个req一起make_header后发送
 // send之前必须设置好req
+// w-req, w-res
 static inline void
 evhttp_send(struct evhttp_request *req, struct evbuffer *databuf)
 {
@@ -2924,15 +2941,17 @@ evhttp_send(struct evhttp_request *req, struct evbuffer *databuf)
 	evhttp_write_buffer(evcon, evhttp_send_done, NULL);
 }
 
+// w-res with databuf
 void
 evhttp_send_reply(struct evhttp_request *req, int code, const char *reason,
 									struct evbuffer *databuf)
 {
-	evhttp_response_code_(req, code, reason);
+	evhttp_response_code_(req, code, reason); // set req
 
-	evhttp_send(req, databuf);
+	evhttp_send(req, databuf); // add databuf to end of req.outbuff and send
 }
 
+// w-res with chunk
 void
 evhttp_send_reply_start(struct evhttp_request *req, int code,
 												const char *reason)
@@ -3022,64 +3041,64 @@ evhttp_send_reply_end(struct evhttp_request *req)
 }
 
 static const char *informational_phrases[] = {
-		/* 100 */ "Continue",
-		/* 101 */ "Switching Protocols"
+				/* 100 */ "Continue",
+				/* 101 */ "Switching Protocols"
 };
 
 static const char *success_phrases[] = {
-		/* 200 */ "OK",
-		/* 201 */ "Created",
-		/* 202 */ "Accepted",
-		/* 203 */ "Non-Authoritative Information",
-		/* 204 */ "No Content",
-		/* 205 */ "Reset Content",
-		/* 206 */ "Partial Content"
+				/* 200 */ "OK",
+				/* 201 */ "Created",
+				/* 202 */ "Accepted",
+				/* 203 */ "Non-Authoritative Information",
+				/* 204 */ "No Content",
+				/* 205 */ "Reset Content",
+				/* 206 */ "Partial Content"
 };
 
 static const char *redirection_phrases[] = {
-		/* 300 */ "Multiple Choices",
-		/* 301 */ "Moved Permanently",
-		/* 302 */ "Found",
-		/* 303 */ "See Other",
-		/* 304 */ "Not Modified",
-		/* 305 */ "Use Proxy",
-		/* 307 */ "Temporary Redirect"
+				/* 300 */ "Multiple Choices",
+				/* 301 */ "Moved Permanently",
+				/* 302 */ "Found",
+				/* 303 */ "See Other",
+				/* 304 */ "Not Modified",
+				/* 305 */ "Use Proxy",
+				/* 307 */ "Temporary Redirect"
 };
 
 static const char *client_error_phrases[] = {
-		/* 400 */ "Bad Request",
-		/* 401 */ "Unauthorized",
-		/* 402 */ "Payment Required",
-		/* 403 */ "Forbidden",
-		/* 404 */ "Not Found",
-		/* 405 */ "Method Not Allowed",
-		/* 406 */ "Not Acceptable",
-		/* 407 */ "Proxy Authentication Required",
-		/* 408 */ "Request Time-out",
-		/* 409 */ "Conflict",
-		/* 410 */ "Gone",
-		/* 411 */ "Length Required",
-		/* 412 */ "Precondition Failed",
-		/* 413 */ "Request Entity Too Large",
-		/* 414 */ "Request-URI Too Large",
-		/* 415 */ "Unsupported Media Type",
-		/* 416 */ "Requested range not satisfiable",
-		/* 417 */ "Expectation Failed"
+				/* 400 */ "Bad Request",
+				/* 401 */ "Unauthorized",
+				/* 402 */ "Payment Required",
+				/* 403 */ "Forbidden",
+				/* 404 */ "Not Found",
+				/* 405 */ "Method Not Allowed",
+				/* 406 */ "Not Acceptable",
+				/* 407 */ "Proxy Authentication Required",
+				/* 408 */ "Request Time-out",
+				/* 409 */ "Conflict",
+				/* 410 */ "Gone",
+				/* 411 */ "Length Required",
+				/* 412 */ "Precondition Failed",
+				/* 413 */ "Request Entity Too Large",
+				/* 414 */ "Request-URI Too Large",
+				/* 415 */ "Unsupported Media Type",
+				/* 416 */ "Requested range not satisfiable",
+				/* 417 */ "Expectation Failed"
 };
 
 static const char *server_error_phrases[] = {
-		/* 500 */ "Internal Server Error",
-		/* 501 */ "Not Implemented",
-		/* 502 */ "Bad Gateway",
-		/* 503 */ "Service Unavailable",
-		/* 504 */ "Gateway Time-out",
-		/* 505 */ "HTTP Version not supported"
+				/* 500 */ "Internal Server Error",
+				/* 501 */ "Not Implemented",
+				/* 502 */ "Bad Gateway",
+				/* 503 */ "Service Unavailable",
+				/* 504 */ "Gateway Time-out",
+				/* 505 */ "HTTP Version not supported"
 };
 
 struct response_class {
-	const char *name;
-	size_t num_responses;
-	const char **responses;
+		const char *name;
+		size_t num_responses;
+		const char **responses;
 };
 
 #ifndef MEMBERSOF
@@ -3087,11 +3106,11 @@ struct response_class {
 #endif
 
 static const struct response_class response_classes[] = {
-		/* 1xx */ { "Informational", MEMBERSOF(informational_phrases), informational_phrases },
-		/* 2xx */ { "Success", MEMBERSOF(success_phrases), success_phrases },
-		/* 3xx */ { "Redirection", MEMBERSOF(redirection_phrases), redirection_phrases },
-		/* 4xx */ { "Client Error", MEMBERSOF(client_error_phrases), client_error_phrases },
-		/* 5xx */ { "Server Error", MEMBERSOF(server_error_phrases), server_error_phrases }
+				/* 1xx */ { "Informational", MEMBERSOF(informational_phrases), informational_phrases },
+				/* 2xx */ { "Success", MEMBERSOF(success_phrases), success_phrases },
+				/* 3xx */ { "Redirection", MEMBERSOF(redirection_phrases), redirection_phrases },
+				/* 4xx */ { "Client Error", MEMBERSOF(client_error_phrases), client_error_phrases },
+				/* 5xx */ { "Server Error", MEMBERSOF(server_error_phrases), server_error_phrases }
 };
 
 // 根据code求出具体的phrase str
@@ -3139,7 +3158,7 @@ evhttp_send_page_(struct evhttp_request *req, struct evbuffer *databuf)
 	}
 
 	// set first line
-	if (req->kind != EVHTTP_RESPONSE)
+	if (req->kind != EVHTTP_RESPONSE) // todo: ???
 		evhttp_response_code_(req, 200, "OK");
 
 	// set header
@@ -3153,26 +3172,26 @@ evhttp_send_page_(struct evhttp_request *req, struct evbuffer *databuf)
 /*************************** uri **************************/
 
 static const char uri_chars[256] = {
-		/* 0 */
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 1, 1, 0,
-		1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 0, 0, 0, 0, 0, 0,
-		/* 64 */
-		0, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1, 1, 1, 1,
-		1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 0, 0, 0, 0, 1,
-		0, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1, 1, 1, 1,
-		1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 0, 0, 0, 1, 0,
-		/* 128 */
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
-		/* 192 */
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				/* 0 */
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 1, 1, 0,
+				1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 0, 0, 0, 0, 0, 0,
+				/* 64 */
+				0, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1, 1, 1, 1,
+				1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 0, 0, 0, 0, 1,
+				0, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1, 1, 1, 1,
+				1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 0, 0, 0, 1, 0,
+				/* 128 */
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				/* 192 */
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
 };
 
 #define CHAR_IS_UNRESERVED(c)			\
@@ -3250,7 +3269,7 @@ evhttp_encode_uri(const char *str)
  */
 int
 evhttp_decode_uri_internal(
-		const char *uri, size_t length, char *ret, int decode_plus_ctl)
+				const char *uri, size_t length, char *ret, int decode_plus_ctl)
 {
 	char c;
 	int j;
@@ -3557,7 +3576,7 @@ evhttp_handle_request(struct evhttp_request *req, void *arg)
 
 	if ((http->allowed_methods & req->type) == 0) {
 		event_debug(("Rejecting disallowed method %x (allowed: %x)\n",
-				(unsigned)req->type, (unsigned)http->allowed_methods));
+						(unsigned)req->type, (unsigned)http->allowed_methods));
 		evhttp_send_error(req, HTTP_NOTIMPLEMENTED, NULL);
 		return;
 	}
@@ -3627,7 +3646,7 @@ int
 evhttp_bind_socket(struct evhttp *http, const char *address, ev_uint16_t port)
 {
 	struct evhttp_bound_socket *bound =
-			evhttp_bind_socket_with_handle(http, address, port);
+					evhttp_bind_socket_with_handle(http, address, port);
 	if (bound == NULL)
 		return (-1);
 	return (0);
@@ -3652,7 +3671,7 @@ evhttp_bind_socket_with_handle(struct evhttp *http, const char *address, ev_uint
 
 	if (bound != NULL) {
 		event_debug(("Bound to port %d - Awaiting connections ... ",
-				port));
+						port));
 		return (bound);
 	}
 
@@ -3663,7 +3682,7 @@ int
 evhttp_accept_socket(struct evhttp *http, evutil_socket_t fd)
 {
 	struct evhttp_bound_socket *bound =
-			evhttp_accept_socket_with_handle(http, fd);
+					evhttp_accept_socket_with_handle(http, fd);
 	if (bound == NULL)
 		return (-1);
 	return (0);
@@ -3686,7 +3705,7 @@ evhttp_accept_socket_with_handle(struct evhttp *http, evutil_socket_t fd)
 	struct evhttp_bound_socket *bound;
 	struct evconnlistener *listener;
 	const int flags =
-			LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_CLOSE_ON_FREE;
+					LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_CLOSE_ON_FREE;
 
 	listener = evconnlistener_new(http->base, NULL, NULL,
 																flags,
@@ -4206,7 +4225,7 @@ const struct evhttp_uri *
 evhttp_request_get_evhttp_uri(const struct evhttp_request *req) {
 	if (req->uri_elems == NULL)
 		event_debug(("%s: request %p has no uri elems\n",
-				__func__, req));
+						__func__, req));
 	return (req->uri_elems);
 }
 
@@ -4297,8 +4316,8 @@ struct evbuffer *evhttp_request_get_output_buffer(struct evhttp_request *req)
 // create conn by evhttp
 static struct evhttp_connection*
 evhttp_get_request_connection(
-		struct evhttp* http,
-		evutil_socket_t fd, struct sockaddr *sa, ev_socklen_t salen)
+				struct evhttp* http,
+				evutil_socket_t fd, struct sockaddr *sa, ev_socklen_t salen)
 {
 	struct evhttp_connection *evcon;
 	char *hostname = NULL, *portname = NULL;
@@ -4312,14 +4331,14 @@ evhttp_get_request_connection(
 	}
 
 	event_debug(("%s: new request from %s:%s on "EV_SOCK_FMT"\n",
-			__func__, hostname, portname, EV_SOCK_ARG(fd)));
+					__func__, hostname, portname, EV_SOCK_ARG(fd)));
 
 	/* we need a connection object to put the http request on */
 	if (http->bevcb != NULL) {
 		bev = (*http->bevcb)(http->base, http->bevcbarg);
 	}
 	evcon = evhttp_connection_base_bufferevent_new(
-			http->base, NULL, bev, hostname, atoi(portname));
+					http->base, NULL, bev, hostname, atoi(portname));
 	mm_free(hostname);
 	mm_free(portname);
 	if (evcon == NULL)
@@ -4342,7 +4361,8 @@ evhttp_get_request_connection(
 	return (evcon);
 }
 
-// 新建一个req 并注册到conn
+// 新建一个r-req 并注册到conn
+// todo: 这是server端的req第一状态？
 static int
 evhttp_associate_new_request_with_connection(struct evhttp_connection *evcon)
 {
@@ -4519,7 +4539,7 @@ make_addrinfo(const char *address, ev_uint16_t port)
 	return (ai);
 }
 
-// socket + bind
+// socket + bind(optional) + setsockopt(optional)
 static evutil_socket_t
 bind_socket(const char *address, ev_uint16_t port, int reuse)
 {
@@ -4528,14 +4548,14 @@ bind_socket(const char *address, ev_uint16_t port, int reuse)
 
 	/* just create an unbound socket */
 	if (address == NULL && port == 0)
-		return bind_socket_ai(NULL, 0);
+		return bind_socket_ai(NULL, 0); // socket() only
 
 	aitop = make_addrinfo(address, port);
 
 	if (aitop == NULL)
 		return (-1);
 
-	fd = bind_socket_ai(aitop, reuse);
+	fd = bind_socket_ai(aitop, reuse); // socket() + bind()
 
 	evutil_freeaddrinfo(aitop);
 
@@ -4543,14 +4563,14 @@ bind_socket(const char *address, ev_uint16_t port, int reuse)
 }
 
 struct evhttp_uri {
-	unsigned flags;
-	char *scheme; /* scheme; e.g http, ftp etc */
-	char *userinfo; /* userinfo (typically username:pass), or NULL */
-	char *host; /* hostname, IP address, or NULL */
-	int port; /* port, or zero */
-	char *path; /* path, or "". */
-	char *query; /* query, or NULL */
-	char *fragment; /* fragment or NULL */
+		unsigned flags;
+		char *scheme; /* scheme; e.g http, ftp etc */
+		char *userinfo; /* userinfo (typically username:pass), or NULL */
+		char *host; /* hostname, IP address, or NULL */
+		int port; /* port, or zero */
+		char *path; /* path, or "". */
+		char *query; /* query, or NULL */
+		char *fragment; /* fragment or NULL */
 };
 
 struct evhttp_uri *
@@ -4764,9 +4784,9 @@ end_of_authority(char *cp)
 }
 
 enum uri_part {
-	PART_PATH,
-	PART_QUERY,
-	PART_FRAGMENT
+		PART_PATH,
+		PART_QUERY,
+		PART_FRAGMENT
 };
 
 /* Return the character after the longest prefix of 'cp' that matches...

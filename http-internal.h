@@ -51,6 +51,8 @@ enum evhttp_connection_state {
 struct event_base;
 
 /* A client or server connection. */
+// con无方向性，并不知道c/s位置，只知道r/w,由con.state表现
+// todo: con.state(r/w) + req.kind(req/res)才能确定某个单向消息在整个c/s中的位置,并确定本con是client or server
 struct evhttp_connection {
 		/* we use this tailq only if this connection was created for an http
      * server */
