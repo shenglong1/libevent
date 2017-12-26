@@ -1507,7 +1507,7 @@ evhttp_connection_cb_cleanup(struct evhttp_connection *evcon)
 	}
 }
 
-// 写出错，则clear bev.outbuff， switch to read
+// 写出错时，则clear bev.outbuff， switch to read
 static void
 evhttp_connection_read_on_write_error(struct evhttp_connection *evcon,
 																			struct evhttp_request *req)
@@ -1533,7 +1533,7 @@ evhttp_connection_read_on_write_error(struct evhttp_connection *evcon,
 	evcon->flags |= EVHTTP_CON_READING_ERROR;
 }
 
-// todo: 错误处理cb, 略
+// todo: 错误处理cb
 static void
 evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 {
@@ -1559,7 +1559,7 @@ evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 			if (!req->chunked && req->ntoread < 0
 					&& what == (BEV_EVENT_READING|BEV_EVENT_EOF)) {
 				/* EOF on read can be benign */
-				evhttp_connection_done(evcon);
+				evhttp_connection_done(evcon); // read -> write
 				return;
 			}
 			break;
@@ -1605,7 +1605,7 @@ evhttp_error_cb(struct bufferevent *bufev, short what, void *arg)
 	} else if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
 		if (what & BEV_EVENT_WRITING &&
 				evcon->flags & EVHTTP_CON_READ_ON_WRITE_ERROR) {
-			evhttp_connection_read_on_write_error(evcon, req);
+			evhttp_connection_read_on_write_error(evcon, req); // clear bev.output, start read
 			return;
 		}
 
@@ -1693,7 +1693,7 @@ evhttp_connection_cb(struct bufferevent *bufev, short what, void *arg)
 	}
 
 	/* try to start requests that have queued up on this connection */
-	evhttp_request_dispatch(evcon);
+	evhttp_request_dispatch(evcon); // start to send
 	return;
 
 	cleanup:
@@ -1713,6 +1713,7 @@ evhttp_valid_response_code(int code)
 	return (1);
 }
 
+// parse to req
 static int
 evhttp_parse_http_version(const char *version, struct evhttp_request *req)
 {
@@ -1947,6 +1948,7 @@ evhttp_find_header(const struct evkeyvalq *headers, const char *key)
 	return (NULL);
 }
 
+// clear all
 void
 evhttp_clear_headers(struct evkeyvalq *headers)
 {
@@ -2062,7 +2064,7 @@ evhttp_add_header_internal(struct evkeyvalq *headers,
  *   MORE_DATA_EXPECTED  when we need to read more headers
  *   ALL_DATA_READ       when all headers have been read.
  */
-// real:仅parse firstline
+// real:仅parse firstline, 包括in request 和 in response
 enum message_read_status
 evhttp_parse_firstline_(struct evhttp_request *req, struct evbuffer *buffer)
 {
