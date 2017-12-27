@@ -158,6 +158,7 @@ struct evhttp_request {
      * Send complete callback - called when the request is actually
      * sent and completed.
      */
+    // 发送完reply(w-res) 后
 		void (*on_complete_cb)(struct evhttp_request *, void *);
 		void *on_complete_cb_arg;
 };

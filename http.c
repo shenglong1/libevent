@@ -2845,7 +2845,7 @@ evhttp_start_write_(struct evhttp_connection *evcon)
 	evhttp_write_buffer(evcon, evhttp_write_connectioncb, NULL);
 }
 
-// todo: 这是server端send结束的方法？因为最终会建立新的r-req
+// todo: after send req or send res finished,因为最终会建立新的r-req
 // 写结束后由bev.user.cb call到这里, 释放req
 static void
 evhttp_send_done(struct evhttp_connection *evcon, void *arg)
@@ -2866,11 +2866,11 @@ evhttp_send_done(struct evhttp_connection *evcon, void *arg)
 	EVUTIL_ASSERT(req->flags & EVHTTP_REQ_OWN_CONNECTION);
 	evhttp_request_free(req);
 
+	// todo: connection close/persist 的实现
 	if (need_close) {
 		evhttp_connection_free(evcon);
 		return;
 	}
-
 	/* we have a persistent connection; try to accept another request. */
 	if (evhttp_associate_new_request_with_connection(evcon) == -1) {
 		evhttp_connection_free(evcon);
@@ -2881,6 +2881,7 @@ evhttp_send_done(struct evhttp_connection *evcon, void *arg)
  * Returns an error page.
  */
 // first line & header 都是固定的，错误信息在body末尾
+// w-res
 void
 evhttp_send_error(struct evhttp_request *req, int error, const char *reason)
 {
@@ -2976,7 +2977,7 @@ evhttp_send_reply_start(struct evhttp_request *req, int code,
 }
 
 /**************************** chunk **************************/
-// ???
+// 在con.bev.output_buff中准备一个chunk分组, send
 void
 evhttp_send_reply_chunk_with_cb(struct evhttp_request *req, struct evbuffer *databuf,
 																void (*cb)(struct evhttp_connection *, void *), void *arg)
@@ -2993,6 +2994,7 @@ evhttp_send_reply_chunk_with_cb(struct evhttp_request *req, struct evbuffer *dat
 		return;
 	if (!evhttp_response_needs_body(req))
 		return;
+  // prepare chunk data
 	if (req->chunked) {
 		evbuffer_add_printf(output, "%x\r\n",
 												(unsigned)evbuffer_get_length(databuf));
@@ -3009,7 +3011,7 @@ evhttp_send_reply_chunk(struct evhttp_request *req, struct evbuffer *databuf)
 {
 	evhttp_send_reply_chunk_with_cb(req, databuf, NULL, NULL);
 }
-// response end ???
+// response end, chunk/normal
 void
 evhttp_send_reply_end(struct evhttp_request *req)
 {
@@ -3171,6 +3173,7 @@ evhttp_send_page_(struct evhttp_request *req, struct evbuffer *databuf)
 
 /*************************** uri **************************/
 
+// todo: ???
 static const char uri_chars[256] = {
 				/* 0 */
 				0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
@@ -3201,6 +3204,7 @@ static const char uri_chars[256] = {
  * Helper functions to encode/decode a string for inclusion in a URI.
  * The returned string must be freed by the caller.
  */
+// uriencode 替换uri中的特殊字符
 char *
 evhttp_uriencode(const char *uri, ev_ssize_t len, int space_as_plus)
 {
@@ -3267,6 +3271,7 @@ evhttp_encode_uri(const char *str)
  *     a ?.  -1 is deprecated.
  * @return the number of bytes written to 'ret'.
  */
+// uri decode
 int
 evhttp_decode_uri_internal(
 				const char *uri, size_t length, char *ret, int decode_plus_ctl)
@@ -3344,8 +3349,8 @@ evhttp_uridecode(const char *uri, int decode_plus, size_t *size_out)
  * Helper function to parse out arguments in a query.
  * The arguments are separated by key and value.
  */
-
-// 从uri中获取参数到headers
+// 提供给外部使用的uri parse方法 和 evhttp_read_body 有什么关系?
+// 从uri str中获取参数到headers
 static int
 evhttp_parse_query_impl(const char *str, struct evkeyvalq *headers,
 												int is_whole_uri)
@@ -3360,11 +3365,13 @@ evhttp_parse_query_impl(const char *str, struct evkeyvalq *headers,
 	TAILQ_INIT(headers);
 
 	if (is_whole_uri) {
+		// parse query
 		uri = evhttp_uri_parse(str);
 		if (!uri)
 			goto error;
 		query_part = evhttp_uri_get_query(uri);
 	} else {
+		// parse string
 		query_part = str;
 	}
 
@@ -3425,6 +3432,7 @@ evhttp_parse_query_str(const char *uri, struct evkeyvalq *headers)
 }
 
 // todo: ??? rpc ?? 要调用的cb名称在uri中??
+// 根据req.path call evhttp.cb
 // 找到目标cb
 static struct evhttp_cb *
 evhttp_dispatch_callback(struct httpcbq *callbacks, struct evhttp_request *req)
@@ -3453,8 +3461,10 @@ evhttp_dispatch_callback(struct httpcbq *callbacks, struct evhttp_request *req)
 	return (NULL);
 }
 
-
-// 略
+// 用pattern 去匹配name
+// 例如pattern="abc*d"
+// name="abcabd"
+// return 1: match
 static int
 prefix_suffix_match(const char *pattern, const char *name, int ignorecase)
 {
@@ -3463,9 +3473,10 @@ prefix_suffix_match(const char *pattern, const char *name, int ignorecase)
 	while (1) {
 		switch (c = *pattern++) {
 			case '\0':
-				return *name == '\0';
+				return *name == '\0'; // 同时结束
 
 			case '*':
+				// pattern现在是*后面的字符串
 				while (*name != '\0') {
 					if (prefix_suffix_match(pattern, name,
 																	ignorecase))
@@ -3474,6 +3485,7 @@ prefix_suffix_match(const char *pattern, const char *name, int ignorecase)
 				}
 				return (0);
 			default:
+				// 普通字符匹配
 				if (c != *name) {
 					if (!ignorecase ||
 							EVUTIL_TOLOWER_(c) != EVUTIL_TOLOWER_(*name))
@@ -3490,7 +3502,8 @@ prefix_suffix_match(const char *pattern, const char *name, int ignorecase)
    matching hostname.  If a match is found, and outhttp is non-null,
    outhttp is set to the matching http object and 1 is returned.
 */
-// find http->virtualhosts.alias same
+// find http->aliases same
+// 找到aliase 等于hostname 的那个evhttp
 static int
 evhttp_find_alias(struct evhttp *http, struct evhttp **outhttp,
 									const char *hostname)
@@ -3510,7 +3523,7 @@ evhttp_find_alias(struct evhttp *http, struct evhttp **outhttp,
 	/* XXX It might be good to avoid recursion here, but I don't
 	   see a way to do that w/o a list. */
 	TAILQ_FOREACH(vhost, &http->virtualhosts, next_vhost) {
-		if (evhttp_find_alias(vhost, outhttp, hostname))
+		if (evhttp_find_alias(vhost, outhttp, hostname)) // recursive to other evhttp
 			return 1;
 	}
 
@@ -3528,6 +3541,7 @@ evhttp_find_alias(struct evhttp *http, struct evhttp **outhttp,
    root http object is stored in outhttp and 0 is returned.
 */
 // find http->virtualhosts.vhost_pattern same
+// 以一个evhttp为中心找他的所有vhost,若vhost中有匹配hostname的，返回evhttp
 static int
 evhttp_find_vhost(struct evhttp *http, struct evhttp **outhttp,
 									const char *hostname)
@@ -3536,7 +3550,7 @@ evhttp_find_vhost(struct evhttp *http, struct evhttp **outhttp,
 	struct evhttp *oldhttp;
 	int match_found = 0;
 
-	if (evhttp_find_alias(http, outhttp, hostname))
+	if (evhttp_find_alias(http, outhttp, hostname)) // 找到hostname为alias的evhttp
 		return 1;
 
 	do {
@@ -3557,7 +3571,8 @@ evhttp_find_vhost(struct evhttp *http, struct evhttp **outhttp,
 	return match_found;
 }
 
-// todo: req.cb ????
+// todo: req.cb after r-req
+// evhttp 提供的rpc
 // req to find evhttp, call target evhttp.cb
 static void
 evhttp_handle_request(struct evhttp_request *req, void *arg)
@@ -3587,6 +3602,7 @@ evhttp_handle_request(struct evhttp_request *req, void *arg)
 		evhttp_find_vhost(http, &http, hostname);
 	}
 
+	// req.path to call target_http.target_cb
 	if ((cb = evhttp_dispatch_callback(&http->callbacks, req)) != NULL) {
 		(*cb->cb)(req, cb->cbarg);
 		return;
@@ -3594,6 +3610,7 @@ evhttp_handle_request(struct evhttp_request *req, void *arg)
 
 	/* Generic call back */
 	if (http->gencb) {
+		// 没找到目标http.cb call default
 		(*http->gencb)(req, http->gencbarg);
 		return;
 	} else {
@@ -3619,7 +3636,7 @@ evhttp_handle_request(struct evhttp_request *req, void *arg)
 			return;
 		}
 
-		evhttp_response_code_(req, HTTP_NOTFOUND, "Not Found");
+		evhttp_response_code_(req, HTTP_NOTFOUND, "Not Found"); // store req
 
 		evbuffer_add_printf(buf, ERR_FORMAT, escaped_html);
 
@@ -3632,8 +3649,11 @@ evhttp_handle_request(struct evhttp_request *req, void *arg)
 	}
 }
 
+/***************************** evhttp *******************************/
 /* Listener callback when a connection arrives at a server. */
-// call after accept a new confd
+// call after server accept a new confd
+// 用confd新建一个con-fd-rreq结构
+// evconnlistener.cb
 static void
 accept_socket_cb(struct evconnlistener *listener, evutil_socket_t nfd, struct sockaddr *peer_sa, int peer_socklen, void *arg)
 {
@@ -3642,6 +3662,9 @@ accept_socket_cb(struct evconnlistener *listener, evutil_socket_t nfd, struct so
 	evhttp_get_request(http, nfd, peer_sa, peer_socklen);
 }
 
+// todo: 这里建立整个lfd evhttp-evconlistener-lfd
+// evhttp server listen开启的完整流程
+// socket bind listen
 int
 evhttp_bind_socket(struct evhttp *http, const char *address, ev_uint16_t port)
 {
@@ -3652,6 +3675,8 @@ evhttp_bind_socket(struct evhttp *http, const char *address, ev_uint16_t port)
 	return (0);
 }
 
+// 1.socket bind listen => fd
+// 2.create evconlistener-fd, register to evhttp
 struct evhttp_bound_socket *
 evhttp_bind_socket_with_handle(struct evhttp *http, const char *address, ev_uint16_t port)
 {
@@ -3699,6 +3724,8 @@ evhttp_foreach_bound_socket(struct evhttp *http,
 		function(bound, argument);
 }
 
+// create evconnlistener by fd , and register to evhttp
+// create evhttp-evconnlistener-fd
 struct evhttp_bound_socket *
 evhttp_accept_socket_with_handle(struct evhttp *http, evutil_socket_t fd)
 {
@@ -3722,6 +3749,7 @@ evhttp_accept_socket_with_handle(struct evhttp *http, evutil_socket_t fd)
 	return (bound);
 }
 
+// bind evconnlistener to evhttp
 struct evhttp_bound_socket *
 evhttp_bind_listener(struct evhttp *http, struct evconnlistener *listener)
 {
@@ -3758,6 +3786,7 @@ evhttp_del_accept_socket(struct evhttp *http, struct evhttp_bound_socket *bound)
 	mm_free(bound);
 }
 
+// create an empty evhttp
 static struct evhttp*
 evhttp_new_object(void)
 {
@@ -3821,6 +3850,7 @@ evhttp_start(const char *address, ev_uint16_t port)
 	return (http);
 }
 
+// 略
 void
 evhttp_free(struct evhttp* http)
 {
@@ -3868,6 +3898,8 @@ evhttp_free(struct evhttp* http)
 	mm_free(http);
 }
 
+/**************************** evhttp member fun ************************/
+// register vhost to http
 int
 evhttp_add_virtual_host(struct evhttp* http, const char *pattern,
 												struct evhttp* vhost)
@@ -3900,6 +3932,7 @@ evhttp_remove_virtual_host(struct evhttp* http, struct evhttp* vhost)
 	return (0);
 }
 
+// register alias to evhttp
 int
 evhttp_add_server_alias(struct evhttp *http, const char *alias)
 {
@@ -3950,6 +3983,7 @@ evhttp_set_timeout(struct evhttp* http, int timeout_in_secs)
 	}
 }
 
+// set/clear evhttp.timeout
 void
 evhttp_set_timeout_tv(struct evhttp* http, const struct timeval* tv)
 {
@@ -4398,7 +4432,7 @@ evhttp_associate_new_request_with_connection(struct evhttp_connection *evcon)
 	return (0);
 }
 
-// 新建并绑定conn-req
+// 新建并绑定conn-fd, 新建并绑定con-rreq
 static void
 evhttp_get_request(struct evhttp *http, evutil_socket_t fd,
 									 struct sockaddr *sa, ev_socklen_t salen)
@@ -4853,7 +4887,7 @@ evhttp_uri_parse(const char *source_uri)
 	return evhttp_uri_parse_with_flags(source_uri, 0);
 }
 
-// 完整的first line uri parse， 略
+// 完整的uri parse， 略
 struct evhttp_uri *
 evhttp_uri_parse_with_flags(const char *source_uri, unsigned flags)
 {
