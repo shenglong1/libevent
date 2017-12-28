@@ -2443,7 +2443,7 @@ evhttp_connection_new(const char *address, ev_uint16_t port)
 	return (evhttp_connection_base_new(NULL, NULL, address, port));
 }
 
-// create conn
+// create empty conn-bev
 // conn 如何和bev结合的
 // 并没有connect，没建立fd
 struct evhttp_connection *
@@ -4037,7 +4037,7 @@ evhttp_set_allowed_methods(struct evhttp* http, ev_uint16_t methods)
 {
 	http->allowed_methods = methods;
 }
-
+// register cb to evhttp
 int
 evhttp_set_cb(struct evhttp *http, const char *uri,
 							void (*cb)(struct evhttp_request *, void *), void *cbarg)
@@ -4103,10 +4103,11 @@ evhttp_set_bevcb(struct evhttp *http,
 	http->bevcbarg = cbarg;
 }
 
+/************************* req **********************************/
 /*
  * Request related functions
  */
-
+// todo: create req
 struct evhttp_request *
 evhttp_request_new(void (*cb)(struct evhttp_request *, void *), void *arg)
 {
@@ -4263,6 +4264,7 @@ evhttp_request_get_evhttp_uri(const struct evhttp_request *req) {
 	return (req->uri_elems);
 }
 
+// 获得req.cache, 没有的话从input_headers中parse到req.cache
 const char *
 evhttp_request_get_host(struct evhttp_request *req)
 {
@@ -4347,7 +4349,7 @@ struct evbuffer *evhttp_request_get_output_buffer(struct evhttp_request *req)
  * Takes a file descriptor to read a request from.
  * The callback is executed once the whole request has been read.
  */
-// create conn by evhttp
+// todo: create whole conn by evhttp and fd
 static struct evhttp_connection*
 evhttp_get_request_connection(
 				struct evhttp* http,
@@ -4371,6 +4373,7 @@ evhttp_get_request_connection(
 	if (http->bevcb != NULL) {
 		bev = (*http->bevcb)(http->base, http->bevcbarg);
 	}
+	// create a empty conn
 	evcon = evhttp_connection_base_bufferevent_new(
 					http->base, NULL, bev, hostname, atoi(portname));
 	mm_free(hostname);
@@ -4395,7 +4398,7 @@ evhttp_get_request_connection(
 	return (evcon);
 }
 
-// 新建一个r-req 并注册到conn
+// 新建一个r-req 并注册到conn, create con-req
 // todo: 这是server端的req第一状态？
 static int
 evhttp_associate_new_request_with_connection(struct evhttp_connection *evcon)
@@ -4433,13 +4436,14 @@ evhttp_associate_new_request_with_connection(struct evhttp_connection *evcon)
 }
 
 // 新建并绑定conn-fd, 新建并绑定con-rreq
+// todo: 总的create/bind con-bev-fd-req
 static void
 evhttp_get_request(struct evhttp *http, evutil_socket_t fd,
 									 struct sockaddr *sa, ev_socklen_t salen)
 {
 	struct evhttp_connection *evcon;
 
-	evcon = evhttp_get_request_connection(http, fd, sa, salen);
+	evcon = evhttp_get_request_connection(http, fd, sa, salen); // create con-bev-fd
 	if (evcon == NULL) {
 		event_sock_warn(fd, "%s: cannot get connection on "EV_SOCK_FMT,
 										__func__, EV_SOCK_ARG(fd));
@@ -4458,7 +4462,7 @@ evhttp_get_request(struct evhttp *http, evutil_socket_t fd,
 	evcon->http_server = http;
 	TAILQ_INSERT_TAIL(&http->connections, evcon, next);
 
-	if (evhttp_associate_new_request_with_connection(evcon) == -1)
+	if (evhttp_associate_new_request_with_connection(evcon) == -1) // bind con-bev-fd <-> req
 		evhttp_connection_free(evcon);
 }
 
@@ -4622,6 +4626,7 @@ evhttp_uri_set_flags(struct evhttp_uri *uri, unsigned flags)
 	uri->flags = flags;
 }
 
+/******************************** parse string helper ****************************/
 /* Return true if the string starting at s and ending immediately before eos
  * is a valid URI scheme according to RFC3986
  */
@@ -4888,6 +4893,7 @@ evhttp_uri_parse(const char *source_uri)
 }
 
 // 完整的uri parse， 略
+// parse string to req.uri_elems(evhttp_uri)
 struct evhttp_uri *
 evhttp_uri_parse_with_flags(const char *source_uri, unsigned flags)
 {
@@ -5036,6 +5042,7 @@ evhttp_uri_free(struct evhttp_uri *uri)
 }
 
 // make whole string uri from evhttp_uri
+// parse req.uri_elems(evhttp_uri)
 char *
 evhttp_uri_join(struct evhttp_uri *uri, char *buf, size_t limit)
 {

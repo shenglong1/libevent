@@ -153,6 +153,7 @@ struct evhttp {
 	// evconnlistener
 	TAILQ_HEAD(boundq, evhttp_bound_socket) sockets;
 
+  // uri-cb
 	TAILQ_HEAD(httpcbq, evhttp_cb) callbacks;
 
 	/* All live connections on this host. */

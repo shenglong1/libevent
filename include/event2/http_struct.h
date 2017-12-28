@@ -125,7 +125,7 @@ struct evhttp_request {
 
 		/* Callback */
 		// 有错误时，也会invoke
-		// evhttp_handle_request
+		// evhttp_handle_request, req去call evhttp.cb 的rpc方法
 		void (*cb)(struct evhttp_request *, void *);
 		void *cb_arg;
 
