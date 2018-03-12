@@ -110,6 +110,8 @@ struct event;
 // event_callback通过指针移动upcast到event
 struct event_callback {
 	TAILQ_ENTRY(event_callback) evcb_active_next;
+
+	// 在base中的位置属性
 	short evcb_flags; // 标识这个event当前位置
 	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority */
 	ev_uint8_t evcb_closure; // event监听对象类型，指示具体cb
@@ -127,10 +129,13 @@ struct event_base;
 struct event {
 	struct event_callback ev_evcallback; // event的所有callback, 4选1
 
+	// 包括定时器和io超时都设置这里
+  // 绝对时间
+	struct timeval ev_timeout;
   // timeout时间始终放在miniheap中
 	/* for managing timeouts */
 	union {
-		TAILQ_ENTRY(event) ev_next_with_common_timeout;
+		TAILQ_ENTRY(e, timeoutvent) ev_next_with_common_timeout;
 		int min_heap_idx;
 	} ev_timeout_pos;
 
@@ -147,7 +152,8 @@ struct event {
 		/* used for io events */
 		struct {
 			LIST_ENTRY (event) ev_io_next; // 指向注册队列中的下一个event
-			struct timeval ev_timeout;
+      // 绝对时间或相对时间
+			struct timeval ev_timeout; // 仅io超时
 		} ev_io;
 
 		/* used by signal events */
@@ -162,9 +168,9 @@ struct event {
 		} ev_signal;
 	} ev_;
 
+  // 读写属性
 	short ev_events; // flags EV_WRITE/EV_READ/...
 	short ev_res;		/* result passed to event callback */
-	struct timeval ev_timeout;
 };
 
 TAILQ_HEAD (event_list, event);

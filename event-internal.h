@@ -65,7 +65,8 @@ extern "C" {
 
     @{
  */
-// 说明event监听的对象类型, event.evcb_closure
+// 说明event监听的对象类型, 和应该使用event_callback结构中的什么cb，
+// event.evcb_closure
 /** A regular event. Uses the evcb_callback callback */
 #define EV_CLOSURE_EVENT 0
 /** A signal event. Uses the evcb_callback callback */
@@ -171,7 +172,9 @@ struct common_timeout_list {
     struct timeval duration; // 本链表的公共时长
     /* Event that triggers whenever one of the events in the queue is
      * ready to activate */
-    struct event timeout_event; // 本node的首个超时event event.timeval/cb/cb_arg
+  // 本node的首个超时event event.timeval/common_timeout_cb/cb_arg
+  // todo: 固定的cb，改变的只是timeout时间，用来放到base中监听
+    struct event timeout_event;
     /* The event_base that this timeout list is part of */
     struct event_base *base;
 };
@@ -208,6 +211,7 @@ struct event_once {
     void *arg;
 };
 
+// 双backend，三个注册队列，一个激活队列，内部notify组件
 struct event_base {
     /** Function pointers and other data to describe this event_base's
      * backend. */
@@ -240,13 +244,14 @@ struct event_base {
 
     /** Set if we should terminate the loop once we're done processing
      * events. */
-    int event_gotterm;
+    int event_gotterm; // true: exit loop
     /** Set if we should terminate the loop immediately */
-    int event_break; // ???
+    int event_break; // true: break loop
     /** Set if we should start a new instance of the loop immediately. */
     int event_continue;
 
     /** The currently running priority of events */
+    // 当前正在处理到了activequeue的哪一个优先级
     int event_running_priority;
 
     /** Set if we're running the event_base_loop function, to prevent
@@ -267,11 +272,13 @@ struct event_base {
      */
     // 指向evcallback_list数组，下标识pri优先级，
     // 每个evcallback_list中包含多个event_callback*,每个对应一个event
+    // 相当于deferred cb list
     struct evcallback_list *activequeues;
     /** The length of the activequeues array */
     int nactivequeues;
     /** A list of event_callbacks that should become active the next time
      * we process events, but not this time. */
+    // 相当于deferred cb list
     struct evcallback_list active_later_queue;
 
     /* common timeout logic */
@@ -288,9 +295,11 @@ struct event_base {
 
     // todo: event register queue
     /** Mapping from file descriptors to enabled (added) events */
+    // event_map_entry[n]，每个元素是fd-events
     struct event_io_map io;
 
     /** Mapping from signal numbers to enabled (added) events. */
+    // evmap_signal[n]
     struct event_signal_map sigmap;
 
     /** Priority queue of events with timeouts. */
@@ -332,6 +341,7 @@ struct event_base {
     /** Flags that this base was configured with */
     enum event_base_config_flag flags;
 
+  // todo: ???
     struct timeval max_dispatch_time;
     int max_dispatch_callbacks;
     int limit_callbacks_after_prio;
@@ -345,6 +355,7 @@ struct event_base {
     evutil_socket_t th_notify_fd[2];
     /** An event used by some th_notify functions to wake up the main
      * thread. */
+    // 0 优先级的，最高优先级 event
     struct event th_notify; // 专门开一个event来监听外部线程通知
     /** A function used to wake up the main thread from another thread. */
     int (*th_notify_fn)(struct event_base *base); // 提供给外部发起notify的接口
@@ -371,6 +382,7 @@ struct event_config_entry {
 /** Internal structure: describes the configuration we want for an event_base
  * that we're about to allocate. */
 struct event_config {
+  // avoid method list
     TAILQ_HEAD(event_configq, event_config_entry) entries;
 //	struct event_configq {
 //	struct event_config_entry *tqh_first;

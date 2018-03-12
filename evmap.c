@@ -56,6 +56,7 @@
 /** An entry for an evmap_io list: notes all the events that want to read or
 	write on a given fd, and the number of each.
   */
+// todo: event_base 普通注册队列的节点
 struct evmap_io {
 	struct event_dlist events;
 	ev_uint16_t nread;
@@ -65,6 +66,7 @@ struct evmap_io {
 
 /* An entry for an evmap_signal list: notes all the events that want to know
    when a signal triggers. */
+// todo: event_base signal注册队列的节点
 struct evmap_signal {
 	struct event_dlist events;
 };

@@ -574,6 +574,7 @@ event_disable_debug_mode(void)
 }
 
 // 真正创建event_base的地方
+// todo: evsigsel没有创建
 struct event_base *
 event_base_new_with_config(const struct event_config *cfg)
 {
@@ -651,12 +652,12 @@ event_base_new_with_config(const struct event_config *cfg)
 			if (event_config_is_avoided_method(cfg, eventops[i]->name))
 				continue; // 禁用
 			if ((eventops[i]->features & cfg->require_features) != cfg->require_features)
-				continue;
+				continue; // feature不匹配
 		}
 
 		/* also obey the environment variables */
 		if (should_check_environment && event_is_method_disabled(eventops[i]->name))
-			continue;
+			continue; //  env 不匹配
 
 		base->evsel = eventops[i];
 
@@ -1422,7 +1423,7 @@ common_timeout_ok(const struct timeval *tv,
 
 /* Add the timeout for the first event in given common timeout list to the
  * event_base's minheap. */
-// 将一个common event 去除common标志，放入min_heap
+// 更新ctl.timeout_event的时间，并重新将其加入超时监听
 static void
 common_timeout_schedule(struct common_timeout_list *ctl,
 												const struct timeval *now, struct event *head)
@@ -1435,7 +1436,7 @@ common_timeout_schedule(struct common_timeout_list *ctl,
 /* Callback: invoked when the timeout for a common timeout queue triggers.
  * This means that (at least) the first event in that queue should be run,
  * and the timeout should be rescheduled if there are more events. */
-// todo: 超时event标准cb
+// todo: 超时event标准cb, 在这里判断超时并添加到activequeue
 static void
 common_timeout_callback(evutil_socket_t fd, short what, void *arg)
 {
@@ -1454,7 +1455,8 @@ common_timeout_callback(evutil_socket_t fd, short what, void *arg)
 		event_del_nolock_(ev, EVENT_DEL_NOBLOCK);
 		event_active_nolock_(ev, EV_TIMEOUT, 1);
 	}
-	if (ev)
+	// 使用common_timeout_list.timeout_event rebind 监听
+	if (ev) // 首个非超时的event
 		common_timeout_schedule(ctl, &now, ev);
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
 }
@@ -1555,6 +1557,8 @@ event_persist_closure(struct event_base *base, struct event *ev)
 	void *evcb_arg;
 
 	/* reschedule the persistent event if we have a timeout. */
+	// 处理一个Persist 的带超时的io
+	// io 有超时, 实现rebind 这个超时io
 	if (ev->ev_io_timeout.tv_sec || ev->ev_io_timeout.tv_usec) {
 		/* If there was a timeout, we want it to run at an interval of
 		 * ev_io_timeout after the last time it was _scheduled_ for,
@@ -1564,6 +1568,7 @@ event_persist_closure(struct event_base *base, struct event *ev)
 		ev_uint32_t usec_mask = 0;
 		EVUTIL_ASSERT(is_same_common_timeout(&ev->ev_timeout,
 																				 &ev->ev_io_timeout));
+		// 计算下一个超时绝对时间run_at
 		gettime(base, &now);
 		if (is_common_timeout(&ev->ev_timeout, base)) {
 			delay = ev->ev_io_timeout;
@@ -1617,6 +1622,8 @@ event_persist_closure(struct event_base *base, struct event *ev)
   the number of non-internal event_callbacks that we processed.
 */
 // 遍历处理一整个evcallback_list链上的消息, value是event_callback
+// 处理base.active queue中的一个优先级evcallback_list
+// 包括PERSIST的rebind流程
 static int
 event_process_active_single_queue(struct event_base *base,
 																	struct evcallback_list *activeq,
@@ -1627,7 +1634,8 @@ event_process_active_single_queue(struct event_base *base,
 
 	EVUTIL_ASSERT(activeq != NULL);
 
-	for (evcb = TAILQ_FIRST(activeq); evcb; evcb = TAILQ_FIRST(activeq)) { // todo: bug? TAILQ_NEXT ?
+	// todo: bug? TAILQ_NEXT ? 没有bug,这里是 FIRST, pop, FIRST 遍历
+	for (evcb = TAILQ_FIRST(activeq); evcb; evcb = TAILQ_FIRST(activeq)) {
 		struct event *ev=NULL;
 		if (evcb->evcb_flags & EVLIST_INIT) {
 			ev = event_callback_to_event(evcb); // todo: ??? 直接从evcb退几个字节得到event ?
@@ -1661,15 +1669,15 @@ event_process_active_single_queue(struct event_base *base,
 
 		// call event.callback
 		switch (evcb->evcb_closure) {
-			case EV_CLOSURE_EVENT_SIGNAL:
+			case EV_CLOSURE_EVENT_SIGNAL: // signal
 				EVUTIL_ASSERT(ev != NULL);
 				event_signal_closure(base, ev); // 如果是信号监听的fd-event触发，则到这里
 				break;
-			case EV_CLOSURE_EVENT_PERSIST:
+			case EV_CLOSURE_EVENT_PERSIST: // non-signal, timeout
 				EVUTIL_ASSERT(ev != NULL);
 				event_persist_closure(base, ev); // 处理PERSIST的非signal事件, PERSIST timeout event也在这里rebind
 				break;
-			case EV_CLOSURE_EVENT: {
+			case EV_CLOSURE_EVENT: { // regular event
 				void (*evcb_callback)(evutil_socket_t, short, void *);
 				EVUTIL_ASSERT(ev != NULL);
 				evcb_callback = *ev->ev_callback;
@@ -1906,6 +1914,7 @@ event_loop(int flags)
 	return event_base_loop(current_base, flags);
 }
 
+// main loop impl
 int
 event_base_loop(struct event_base *base, int flags)
 {
@@ -1919,6 +1928,7 @@ event_base_loop(struct event_base *base, int flags)
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
 
 	if (base->running_loop) {
+		// 多次重复的event_base_loop
 		event_warnx("%s: reentrant invocation.  Only one event_base_loop"
 										" can run on each event_base at once.", __func__);
 		EVBASE_RELEASE_LOCK(base, th_base_lock);
@@ -2094,7 +2104,7 @@ event_base_once(struct event_base *base, evutil_socket_t fd, short events,
 	return (0);
 }
 
-// 赋值一个event
+// 赋值一个event, 包括event和event.callback
 int
 event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, short events, void (*callback)(evutil_socket_t, short, void *), void *arg)
 {
@@ -2656,6 +2666,7 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 	 * we should change the timeout state only if the previous event
 	 * addition succeeded.
 	 */
+	// 注册到timeout队列
 	if (res != -1 && tv != NULL) {
 		struct timeval now;
 		int common_timeout;
@@ -2673,8 +2684,10 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 		if (ev->ev_closure == EV_CLOSURE_EVENT_PERSIST && !tv_is_absolute)
 			ev->ev_io_timeout = *tv;
 
+    // todo: 多次add 同一超时event是覆盖安装，所以先删除已有的注册和激活
 #ifndef USE_REINSERT_TIMEOUT
 		if (ev->ev_flags & EVLIST_TIMEOUT) {
+			// 已经在队列中,删除
 			event_queue_remove_timeout(base, ev);
 		}
 #endif
@@ -2721,16 +2734,19 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 										"event_add: event %p, timeout in %d seconds %d useconds, call %p",
 												ev, (int)tv->tv_sec, (int)tv->tv_usec, ev->ev_callback));
 
+		// todo: ??? 所以不管是io超时timeout，还是普通定时器timeout，都到这里添加？
 #ifdef USE_REINSERT_TIMEOUT
 		event_queue_reinsert_timeout(base, ev, was_common, common_timeout, old_timeout_idx);
 #else
 		event_queue_insert_timeout(base, ev); // 一个event_timeout加入base, common/heap
 #endif
 
+    // todo: reschedule common_list/min_heap
 		if (common_timeout) {
 			// 找到刚刚插入的ev.ev_timeout所在的common_timeout_list
 			struct common_timeout_list *ctl = get_common_timeout_list(base, &ev->ev_timeout);
 			if (ev == TAILQ_FIRST(&ctl->events)) {
+        // 更新ctl在event_base中的监听
 				common_timeout_schedule(ctl, &now, ev); // recursive, put to min_heap
 			}
 		} else {
@@ -3137,6 +3153,7 @@ event_deferred_cb_schedule_(struct event_base *base, struct event_callback *cb)
 
 // main loop 中 推进时间
 // 选出超时值最小的那个
+// 计算min_heap中下一次超时的时间, tv_p是最近的下一次min_heap超时在什么时间，0代表立即超时
 static int
 timeout_next(struct event_base *base, struct timeval **tv_p)
 {
@@ -3191,12 +3208,15 @@ timeout_process(struct event_base *base)
 
 	gettime(base, &now);
 
+	// min_heap 中所有 time <= now 的 加入激活队列
 	while ((ev = min_heap_top_(&base->timeheap))) {
 		if (evutil_timercmp(&ev->ev_timeout, &now, >))
+			// 并没有超时的
 			break;
 
 		/* delete this event from the I/O queues */
 		event_del_nolock_(ev, EVENT_DEL_NOBLOCK);
+		// 一个超时event超时，则从全部注册队列中删除他，即使是PERSIST的，也是这么做
 		// 从这里看出来, 如果一个事件被同时注册为io和timeout，则超时后就删除了
 
 		event_debug(("timeout_process: event: %p, call %p",
@@ -3683,7 +3703,7 @@ evthread_make_base_notifiable_nolock_(struct event_base *base)
 
 	/* we need to mark this as internal event */
 	base->th_notify.ev_flags |= EVLIST_INTERNAL;
-	event_priority_set(&base->th_notify, 0);
+	event_priority_set(&base->th_notify, 0); // 使成为最高优先级的event
 
 	return event_add_nolock_(&base->th_notify, NULL, 0);
 }
