@@ -38,6 +38,7 @@ typedef void (*ev_sighandler_t)(int);
  */
 struct evsig_info {
 	/* Event watching ev_signal_pair[1] */
+		// todo: default cb=evsig_cb, fd=pipe[0]
 	struct event ev_signal;
 	/* Socketpair used to send notifications from the signal handler */
 	evutil_socket_t ev_signal_pair[2];

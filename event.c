@@ -2652,7 +2652,7 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 		if (ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED))
 			res = evmap_io_add_(base, ev->ev_fd, ev);
 		else if (ev->ev_events & EV_SIGNAL)
-			res = evmap_signal_add_(base, (int)ev->ev_fd, ev);
+			res = evmap_signal_add_(base, (int)ev->ev_fd, ev); // 这里的fd实际是signo
 		if (res != -1)
 			event_queue_insert_inserted(base, ev); // 仅更新flag
 		if (res == 1) {

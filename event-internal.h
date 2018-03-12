@@ -200,6 +200,7 @@ extern int event_debug_mode_on_;
 #define EVENT_DEBUG_MODE_IS_ON() (0)
 #endif
 
+// header_name, node_name
 TAILQ_HEAD(evcallback_list, event_callback);
 
 /* Sets up an event for processing once */
@@ -295,11 +296,13 @@ struct event_base {
 
     // todo: event register queue
     /** Mapping from file descriptors to enabled (added) events */
-    // event_map_entry[n]，每个元素是fd-events
+    // event_map_entry.hth_table[fd]，每个元素是fd-events
+    // 以fd为准找具体的event
     struct event_io_map io;
 
     /** Mapping from signal numbers to enabled (added) events. */
-    // evmap_signal[n]
+    // evmap_signal[signo] = evmap_signal*
+    // 以signo为准找具体的event
     struct event_signal_map sigmap;
 
     /** Priority queue of events with timeouts. */

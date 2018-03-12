@@ -165,6 +165,7 @@ evbuffer_chain_new(size_t size)
 	size += EVBUFFER_CHAIN_SIZE;
 
 	/* get the next largest memory that can hold the buffer */
+	// 从 MIN_BUFFER_SIZE开始2被扩展
 	if (size < EVBUFFER_CHAIN_MAX / 2) {
 		// 两倍扩展
 		to_alloc = MIN_BUFFER_SIZE;
@@ -410,6 +411,7 @@ evbuffer_incref_and_lock_(struct evbuffer *buf)
 	++buf->refcnt;
 }
 
+// set buffer.deferred = evbuffer_deferred_callback
 int
 evbuffer_defer_callbacks(struct evbuffer *buffer, struct event_base *base)
 {
@@ -457,6 +459,8 @@ evbuffer_set_parent_(struct evbuffer *buf, struct bufferevent *bev)
 }
 
 // invoke evbuffer.callbacks
+// run all callbacks
+// todo: ??? mask 有什么用???
 static void
 evbuffer_run_callbacks(struct evbuffer *buffer, int running_deferred)
 {
@@ -466,6 +470,7 @@ evbuffer_run_callbacks(struct evbuffer *buffer, int running_deferred)
 	ev_uint32_t mask, masked_val;
 	int clear = 1;
 
+	// set mask
 	if (running_deferred) {
 		mask = EVBUFFER_CB_NODEFER|EVBUFFER_CB_ENABLED;
 		masked_val = EVBUFFER_CB_ENABLED;

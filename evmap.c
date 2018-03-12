@@ -469,6 +469,7 @@ evmap_signal_add_(struct event_base *base, int sig, struct event *ev)
 	}
 	// todo: 1. find node
 	// make ctx evmap_signal*
+	// add to map.entry[sig] list
 	GET_SIGNAL_SLOT_AND_CTOR(ctx, map, sig, evmap_signal, evmap_signal_init, base->evsigsel->fdinfo_len);
 
 	if (LIST_EMPTY(&ctx->events)) {
