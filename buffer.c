@@ -2278,7 +2278,10 @@ evbuffer_expand(struct evbuffer *buf, size_t datlen)
     @return The number of buffers we're using.
  */
 // 设置vecs指向chains,即evbuffer做vecs的后备存储
+// n_vecs_avail个vec， 总映射长度为howmuch
 // 需要多少就映射多少，最后一个vec可能只映射了部分chain.buffer
+// todo: 1.如果chain很大，vecs[0]部分映射就足够howmuch了，后面的vecs都空怎么办？ 满足howmuch，不满足n_vecs_avail
+// todo: 2.如果chain很小，指定的vecs都全部应设完了，都不满足howmuch，怎么办？ 满足n，不满足howmuch
 int
 evbuffer_read_setup_vecs_(struct evbuffer *buf, ev_ssize_t howmuch,
     struct evbuffer_iovec *vecs, int n_vecs_avail,
