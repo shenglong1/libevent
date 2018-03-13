@@ -137,9 +137,7 @@ bufferevent_inbuf_wm_cb(struct evbuffer *buf,
 }
 
 // bufferevent_private.deferred.cb
-// 有lock情况下的buffevent析构函数
-// 1. 先处理pending的cb，call一遍，然后cancel掉
-// 2. 添加一个destructor到激活队列中取destroy bufferevent_private
+// todo: run bev.usercb
 static void
 bufferevent_run_deferred_callbacks_locked(struct event_callback *cb, void *arg)
 {
@@ -175,6 +173,8 @@ bufferevent_run_deferred_callbacks_locked(struct event_callback *cb, void *arg)
 }
 
 // 无lock情况下的buffevent析构函数
+// private.deferred
+// 根据private.x_pending 标志，call bev.xcb
 static void
 bufferevent_run_deferred_callbacks_unlocked(struct event_callback *cb, void *arg)
 {
@@ -232,7 +232,7 @@ bufferevent_run_deferred_callbacks_unlocked(struct event_callback *cb, void *arg
 
 ////////////// run bufferevent.usercb ///////////////////
 // private.deferred 如何使用
-// call user.cb or active defferred
+// call bev.user.cb or active deferred
 void
 bufferevent_run_readcb_(struct bufferevent *bufev, int options)
 {
@@ -478,6 +478,7 @@ bufferevent_read(struct bufferevent *bufev, void *data, size_t size)
 	return (evbuffer_remove(bufev->input, data, size));
 }
 
+// from bufev.input to buf
 int
 bufferevent_read_buffer(struct bufferevent *bufev, struct evbuffer *buf)
 {
@@ -576,7 +577,7 @@ bufferevent_disable_hard_(struct bufferevent *bufev, short event)
 	BEV_LOCK(bufev);
 	bufev->enabled &= ~event;
 
-	bufev_private->connecting = 0;
+	bufev_private->connecting = 0; // different
 	if (bufev->be_ops->disable(bufev, event) < 0)
 		r = -1;
 

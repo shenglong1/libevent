@@ -78,10 +78,12 @@ struct bufferevent {
 	/** A read event that triggers when a timeout has happened or a socket
 	    is ready to read data.  Only used by some subtypes of
 	    bufferevent. */
+	// bufferevent_readcb, move data from fd to input
 	struct event ev_read;
 	/** A write event that triggers when a timeout has happened or a socket
 	    is ready to write data.  Only used by some subtypes of
 	    bufferevent. */
+  // bufferevent_writecb, move data from output to fd
 	struct event ev_write;
 
 	/** An input buffer. Only the bufferevent is allowed to add data to

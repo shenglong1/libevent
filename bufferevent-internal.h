@@ -166,6 +166,7 @@ struct bufferevent_private {
 
 	/** Evbuffer callback to enforce watermarks on input. */
 	// 水位变化时的cb, 这个cb实际是在bufferevent.input.cb中
+	// 用户自定义的优先，如果没有自定义，则用默认的bufferevent_inbuf_wm_cb
 	struct evbuffer_cb_entry *read_watermarks_cb;
 
 	/** If set, we should free the lock when we free the bufferevent. */
@@ -176,6 +177,7 @@ struct bufferevent_private {
 	// set 表示当前有readcb pending，这样当析构deferred调用时，回去call一遍readcb
 	// see bufferevent_run_readcb_
 	// run bufferevent.readcb时 没有实际run，而是schedule(private.deferred)
+	// todo: 表示 有private.deferred正在base.activequeue中
 	unsigned readcb_pending : 1; // 1, 正在延迟run readcb
 	/** Flag: set if we have deferred callbacks and a write callback is
 	 * pending. */
@@ -211,7 +213,9 @@ struct bufferevent_private {
 	int dns_error;
 
 	/** Used to implement deferred callbacks */
-	struct event_callback deferred; // 析构函数
+	// 用于放到base.activequeue中的公共deferred
+	// bufferevent_run_deferred_callbacks_locked
+	struct event_callback deferred;
 
 	/** The options this bufferevent was constructed with */
 	enum bufferevent_options options; // BEV_OPT_

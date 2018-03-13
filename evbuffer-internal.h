@@ -99,7 +99,7 @@ struct evbuffer {
 	struct evbuffer_chain **last_with_datap;
 
 	/** Total amount of bytes stored in all chains.*/
-	size_t total_len; // capacity
+	size_t total_len; // 实际数据长度，即所有chain->off 的和
 
 	/** Number of bytes we have added to the buffer since we last tried to
 	 * invoke callbacks. */
@@ -145,10 +145,14 @@ struct evbuffer {
 
 	/** A struct event_callback handle to make all of this buffer's callbacks
 	 * invoked from the event loop. */
-	// evbuffer_deferred_callback
+	// evbuffer_deferred_callback -> evbuffer_run_callbacks
+	// 始终是evbuffer_run_callbacks(1)这种方式去call deffer的cb
 	struct event_callback deferred;
 
 	/** A doubly-linked-list of callback functions */
+  // callbacks按照flag分类
+	// invoke两种类型的cb，defer和no-defer，
+	// no-defer立即call，defer发给base.activequeue去call
 	LIST_HEAD(evbuffer_cb_queue, evbuffer_cb_entry) callbacks;
 
 	/** The parent bufferevent object this evbuffer belongs to.
@@ -211,7 +215,8 @@ struct evbuffer_chain {
 	 * EVBUFFER_IMMUTABLE will be set in flags.  For sendfile, it
 	 * may point to NULL.
 	 */
-	unsigned char *buffer;
+	// 可以是reference, segment, multicast_parent
+	unsigned char *buffer; /
 };
 
 /** callback for a reference chain; lets us know what to do with it when

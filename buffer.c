@@ -214,6 +214,7 @@ evbuffer_chain_free(struct evbuffer_chain *chain)
 	/* safe to release chain, it's either a referencing
 	 * chain or all references to it have been freed */
 	if (chain->flags & EVBUFFER_REFERENCE) {
+		// chain->buffer中是evbuffer_chain_reference
 		struct evbuffer_chain_reference *info =
 		    EVBUFFER_CHAIN_EXTRA(
 			    struct evbuffer_chain_reference,
@@ -295,6 +296,8 @@ evbuffer_free_trailing_empty_chains(struct evbuffer *buf)
 {
 	struct evbuffer_chain **ch = buf->last_with_datap;
 	/* Find the first victim chain.  It might be *last_with_datap */
+	// 将ch 移动到最后一个非空的且没有pin的chain，其后面所有的chain都空
+	// *ch指向第一个空的chain
 	while ((*ch) && ((*ch)->off != 0 || CHAIN_PINNED(*ch)))
 		ch = &(*ch)->next; // move to a empty chain
 	if (*ch) {
@@ -302,19 +305,20 @@ evbuffer_free_trailing_empty_chains(struct evbuffer *buf)
 		evbuffer_free_all_chains(*ch);
 		*ch = NULL;
 	}
-	return ch;
+	return ch; // 最后一个未被释放的
 }
 
 /* Add a single chain 'chain' to the end of 'buf', freeing trailing empty
  * chains as necessary.  Requires lock.  Does not schedule callbacks.
  */
+// 释放尾部的空 chain，并插入一个节点chain,这个节点可以有数据
 static void
 evbuffer_chain_insert(struct evbuffer *buf,
     struct evbuffer_chain *chain)
 {
 	ASSERT_EVBUFFER_LOCKED(buf);
 	if (*buf->last_with_datap == NULL) {
-		// 空队列插入第一个chain
+    // todo: ??? 没有任何chain
 		/* There are no chains data on the buffer at all. */
 		EVUTIL_ASSERT(buf->last_with_datap == &buf->first);
 		EVUTIL_ASSERT(buf->first == NULL);
@@ -322,9 +326,11 @@ evbuffer_chain_insert(struct evbuffer *buf,
 	} else {
 		struct evbuffer_chain **chp;
 		chp = evbuffer_free_trailing_empty_chains(buf);
-		*chp = chain;
-		if (chain->off)
-			buf->last_with_datap = chp;
+		*chp = chain; // *chp = next = chain
+		if (chain->off) {
+			// buf->last_with_datap = chp; // 原版的有bug吧？？？
+			buf->last_with_datap = &((*chp)->next);
+		}
 		buf->last = chain;
 	}
 	buf->total_len += chain->off;
@@ -459,11 +465,15 @@ evbuffer_set_parent_(struct evbuffer *buf, struct bufferevent *bev)
 }
 
 // invoke evbuffer.callbacks
-// run all callbacks
-// todo: ??? mask 有什么用???
+// run all callbacks by cb_entry.flags
+// todo: 不同running_deferred参数时，mask和mask_val搭配限制了flag
 static void
 evbuffer_run_callbacks(struct evbuffer *buffer, int running_deferred)
 {
+	// 用running_deferred参数限制当前run哪些cb，按照flag过滤
+	// running_deferred==1: run flag 必须有EVBUFFER_CB_ENABLED,必须没有EVBUFFER_CB_NODEFER
+	// running_deferred==0 && deferred_cbs: run flag 必须有EVBUFFER_CB_ENABLED和EVBUFFER_CB_NODEFER
+  // running_deferred==0 && deferred_cbs==0: run flag 必须有EVBUFFER_CB_ENABLED
 	struct evbuffer_cb_entry *cbent, *next;
 	struct evbuffer_cb_info info;
 	size_t new_size;
@@ -472,15 +482,18 @@ evbuffer_run_callbacks(struct evbuffer *buffer, int running_deferred)
 
 	// set mask
 	if (running_deferred) {
+		// flag 必须有EVBUFFER_CB_ENABLED,必须没有EVBUFFER_CB_NODEFER
 		mask = EVBUFFER_CB_NODEFER|EVBUFFER_CB_ENABLED;
 		masked_val = EVBUFFER_CB_ENABLED;
 	} else if (buffer->deferred_cbs) {
+		// flag 必须有EVBUFFER_CB_ENABLED和EVBUFFER_CB_NODEFER
 		mask = EVBUFFER_CB_NODEFER|EVBUFFER_CB_ENABLED;
 		masked_val = EVBUFFER_CB_NODEFER|EVBUFFER_CB_ENABLED;
 		/* Don't zero-out n_add/n_del, since the deferred callbacks
 		   will want to see them. */
 		clear = 0;
 	} else {
+		// flag 必须有EVBUFFER_CB_ENABLED
 		mask = EVBUFFER_CB_ENABLED;
 		masked_val = EVBUFFER_CB_ENABLED;
 	}
@@ -494,6 +507,7 @@ evbuffer_run_callbacks(struct evbuffer *buffer, int running_deferred)
 	if (buffer->n_add_for_cb == 0 && buffer->n_del_for_cb == 0)
 		return;
 
+	// 获得buffer总共的增量，即从上次cb以来，增加和删除了多少data
 	new_size = buffer->total_len;
 	info.orig_size = new_size + buffer->n_del_for_cb - buffer->n_add_for_cb;
 	info.n_added = buffer->n_add_for_cb;
@@ -520,9 +534,9 @@ evbuffer_run_callbacks(struct evbuffer *buffer, int running_deferred)
 	}
 }
 
-// call all evbuffer.callbacks
-// 1. 有deferred就把deferred_cb放到激活队列
-// 2. 否则直接call all cb
+// todo: call all evbuffer.callbacks
+// 1. 将buffer->deferred放到base中，最终会call deferred cb
+// 2. 同时直接call no-deferred cb
 void
 evbuffer_invoke_callbacks_(struct evbuffer *buffer)
 {
@@ -543,6 +557,8 @@ evbuffer_invoke_callbacks_(struct evbuffer *buffer)
 	evbuffer_run_callbacks(buffer, 0);
 }
 
+// call deferred_cbs
+// 这是evbuffer.deferred的callback
 static void
 evbuffer_deferred_callback(struct event_callback *cb, void *arg)
 {
@@ -644,6 +660,7 @@ evbuffer_get_contiguous_space(const struct evbuffer *buf)
 	return result;
 }
 
+// write from vec to buff.chain
 size_t
 evbuffer_add_iovec(struct evbuffer * buf, struct evbuffer_iovec * vec, int n_vec) {
 	int n;
@@ -1840,6 +1857,9 @@ done:
 	return result;
 }
 
+// 1.空chain list,直接新建chain放下所有数据；
+// 2.first align足够，直接copy；
+// 3.first align不够，则新建chain，data放在两段chain中
 int
 evbuffer_prepend(struct evbuffer *buf, const void *data, size_t datlen)
 {
@@ -1876,6 +1896,7 @@ evbuffer_prepend(struct evbuffer *buf, const void *data, size_t datlen)
 			chain->misalign = chain->buffer_len;
 
 		if ((size_t)chain->misalign >= datlen) {
+      // first node align 足够
 			/* we have enough space to fit everything */
 			memcpy(chain->buffer + chain->misalign - datlen,
 			    data, datlen);
@@ -1886,6 +1907,8 @@ evbuffer_prepend(struct evbuffer *buf, const void *data, size_t datlen)
 			goto out;
 		} else if (chain->misalign) {
 			/* we can only fit some of the data. */
+			// first node align 不够
+			// 仅copy data尾部数据到first.align
 			memcpy(chain->buffer,
 			    (char*)data + datlen - chain->misalign,
 			    (size_t)chain->misalign);
@@ -1897,12 +1920,13 @@ evbuffer_prepend(struct evbuffer *buf, const void *data, size_t datlen)
 		}
 	}
 
+	// 头部新建chain，copy剩余data头的数据
 	/* we need to add another chain */
 	if ((tmp = evbuffer_chain_new(datlen)) == NULL)
 		goto done;
 	buf->first = tmp;
 	if (buf->last_with_datap == &buf->first)
-		buf->last_with_datap = &tmp->next;
+		buf->last_with_datap = &tmp->next; // todo: ???
 
 	tmp->next = chain;
 
@@ -1949,6 +1973,13 @@ evbuffer_chain_should_realign(struct evbuffer_chain *chain,
 
 /* Expands the available space in the event buffer to at least datlen, all in
  * a single chunk.  Return that chunk. */
+// todo: 扩展一个chain
+// 扩展策略：
+// 跳过所有0 space的chain
+// 找到首个非0 space chain：节点状态：
+// null,
+// 空间足够，
+// 空间不够（加上align足够，align不够(resize/no-resize(查找下一点或new_chain))）
 static struct evbuffer_chain *
 evbuffer_expand_singlechain(struct evbuffer *buf, size_t datlen)
 {
@@ -1958,6 +1989,7 @@ evbuffer_expand_singlechain(struct evbuffer *buf, size_t datlen)
 
 	chainp = buf->last_with_datap;
 
+	// skip 0 space chain
 	/* XXX If *chainp is no longer writeable, but has enough space in its
 	 * misalign, this might be a bad idea: we could still use *chainp, not
 	 * (*chainp)->next. */
@@ -1968,6 +2000,7 @@ evbuffer_expand_singlechain(struct evbuffer *buf, size_t datlen)
 	 * We will either use it, realign it, replace it, or resize it. */
 	chain = *chainp;
 
+	// 1. 末尾节点null
 	if (chain == NULL ||
 	    (chain->flags & (EVBUFFER_IMMUTABLE|EVBUFFER_MEM_PINNED_ANY))) {
 		/* We can't use the last_with_data chain at all.  Just add a
@@ -1975,18 +2008,21 @@ evbuffer_expand_singlechain(struct evbuffer *buf, size_t datlen)
 		goto insert_new;
 	}
 
+	// 2. 末尾节点space enough
 	/* If we can fit all the data, then we don't have to do anything */
 	if (CHAIN_SPACE_LEN(chain) >= datlen) {
 		result = chain;
 		goto ok;
 	}
 
+	// 3. 空chain_list
 	/* If the chain is completely empty, just replace it by adding a new
 	 * empty chain. */
 	if (chain->off == 0) {
 		goto insert_new;
 	}
 
+	// 4. 末尾节点align足够
 	/* If the misalignment plus the remaining space fulfills our data
 	 * needs, we could just force an alignment to happen.  Afterwards, we
 	 * have enough space.  But only do this if we're saving a lot of space
@@ -1994,7 +2030,7 @@ evbuffer_expand_singlechain(struct evbuffer *buf, size_t datlen)
 	 * probably offset by the time lost in copying.
 	 */
 	if (evbuffer_chain_should_realign(chain, datlen)) {
-		evbuffer_chain_align(chain);
+		evbuffer_chain_align(chain); // move chain.data to chain.align
 		result = chain;
 		goto ok;
 	}
@@ -2005,12 +2041,14 @@ evbuffer_expand_singlechain(struct evbuffer *buf, size_t datlen)
 	 * resize, we have to copy chain->off bytes.
 	 */
 
+	// 5. align不够
 	/* Would expanding this chunk be affordable and worthwhile? */
 	if (CHAIN_SPACE_LEN(chain) < chain->buffer_len / 8 ||
 	    chain->off > MAX_TO_COPY_IN_EXPAND ||
 		datlen >= (EVBUFFER_CHAIN_MAX - chain->off)) {
 		/* It's not worth resizing this chain. Can the next one be
 		 * used? */
+		// 数据比较多，就不resize
 		if (chain->next && CHAIN_SPACE_LEN(chain->next) >= datlen) {
 			/* Yes, we can just use the next chain (which should
 			 * be empty. */
@@ -2022,6 +2060,7 @@ evbuffer_expand_singlechain(struct evbuffer *buf, size_t datlen)
 			goto insert_new;
 		}
 	} else {
+		// todo: resize
 		/* Okay, we're going to try to resize this chain: Not doing so
 		 * would waste at least 1/8 of its current allocation, and we
 		 * can do so without having to copy more than
@@ -2061,6 +2100,7 @@ err:
 
 /* Make sure that datlen bytes are available for writing in the last n
  * chains.  Never copies or moves data. */
+// todo: 扩容或缩容，使last_with_data后的节点有datlen 长，且n个节点
 int
 evbuffer_expand_fast_(struct evbuffer *buf, size_t datlen, int n)
 {
@@ -2113,6 +2153,7 @@ evbuffer_expand_fast_(struct evbuffer *buf, size_t datlen, int n)
 	 * them. Either add a new chain with enough space, or replace all
 	 * empty chains with one that has enough space, depending on n. */
 	if (used < n) {
+		// expand node
 		/* The loop ran off the end of the chains before it hit n
 		 * chains; we can add another. */
 		EVUTIL_ASSERT(chain == NULL);
@@ -2128,6 +2169,7 @@ evbuffer_expand_fast_(struct evbuffer *buf, size_t datlen, int n)
 		 * just allocated a new chain earlier) */
 		return (0);
 	} else {
+		// recycle node
 		/* Nuke _all_ the empty chains. */
 		int rmv_all = 0; /* True iff we removed last_with_data. */
 		chain = *buf->last_with_datap;
@@ -2236,6 +2278,7 @@ evbuffer_expand(struct evbuffer *buf, size_t datlen)
     @return The number of buffers we're using.
  */
 // 设置vecs指向chains,即evbuffer做vecs的后备存储
+// 需要多少就映射多少，最后一个vec可能只映射了部分chain.buffer
 int
 evbuffer_read_setup_vecs_(struct evbuffer *buf, ev_ssize_t howmuch,
     struct evbuffer_iovec *vecs, int n_vecs_avail,
@@ -2258,7 +2301,9 @@ evbuffer_read_setup_vecs_(struct evbuffer *buf, ev_ssize_t howmuch,
 	}
 
 	chain = *firstchainp;
+	// 此时chain 指向last_with_datap后面的第一个有空间的chain
 	for (i = 0; i < n_vecs_avail && so_far < (size_t)howmuch; ++i) {
+    // howmuch 是总共需要映射多少数据
 		size_t avail = (size_t) CHAIN_SPACE_LEN(chain);
 		if (avail > (howmuch - so_far) && exact)
 			avail = howmuch - so_far;
