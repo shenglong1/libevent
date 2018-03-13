@@ -333,6 +333,7 @@ be_filter_process_input(struct bufferevent_filtered *bevf,
 			limit = bev->wm_read.high -
 			    evbuffer_get_length(bev->input);
 
+		// move data from underlying.input to bev.input
 		res = bevf->process_in(bevf->underlying->input,
 		    bev->input, limit, state, bevf->context); // copy from underlying.input to bev.input
 
@@ -475,12 +476,14 @@ be_filter_read_nolock_(struct bufferevent *underlying, void *me_)
 			state = BEV_NORMAL;
 
 		/* XXXX use return value */
+		// move and filter from underlying.input to bev.input
 		res = be_filter_process_input(bevf, state, &processed_any); // copy in
 		(void)res;
 
 		/* XXX This should be in process_input, not here.  There are
 		 * other places that can call process-input, and they should
 		 * force readcb calls as needed. */
+		// call bev.user.cb
 		if (processed_any) {
 			bufferevent_trigger_nolock_(bufev, EV_READ, 0); // call bev.readcb usercb
 			if (evbuffer_get_length(underlying->input) > 0 &&
