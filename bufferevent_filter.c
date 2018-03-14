@@ -61,18 +61,24 @@
 #include "util-internal.h"
 
 /* prototypes */
+// 这些操作都是针对上层bev的
 static int be_filter_enable(struct bufferevent *, short);
 static int be_filter_disable(struct bufferevent *, short);
 static void be_filter_unlink(struct bufferevent *);
 static void be_filter_destruct(struct bufferevent *);
 
+// move between bev and underlying
+// underlying.user.cb
 static void be_filter_readcb(struct bufferevent *, void *);
 static void be_filter_writecb(struct bufferevent *, void *);
 static void be_filter_eventcb(struct bufferevent *, short, void *);
+
+// 这些操作都是针对上层bev的
 static int be_filter_flush(struct bufferevent *bufev,
     short iotype, enum bufferevent_flush_mode mode);
 static int be_filter_ctrl(struct bufferevent *, enum bufferevent_ctrl_op, union bufferevent_ctrl_data *);
 
+// bev.evbuffer.cb
 static void bufferevent_filtered_inbuf_cb(struct evbuffer *buf,
     const struct evbuffer_cb_info *cbinfo, void *arg);
 
@@ -111,6 +117,7 @@ struct bufferevent_filtered {
 	void *context;
 };
 
+// 这些操作都是针对上层bev的
 const struct bufferevent_ops bufferevent_ops_filter = {
 	"filter",
 	evutil_offsetof(struct bufferevent_filtered, bev.bev),
@@ -166,6 +173,7 @@ be_readbuf_full(struct bufferevent_filtered *bevf,
 
 
 /* Filter to use when we're created with a NULL filter. */
+// 就是process_in和process_out, move and filter impl
 static enum bufferevent_filter_result
 be_null_filter(struct evbuffer *src, struct evbuffer *dst, ev_ssize_t lim,
 	       enum bufferevent_flush_mode state, void *ctx)
@@ -191,6 +199,7 @@ bufferevent_filter_new(struct bufferevent *underlying,
 	if (!underlying)
 		return NULL;
 
+	// 这里只是为了利用input_filter来给be_null_filter做个type check
 	if (!input_filter)
 		input_filter = be_null_filter; // use default filter
 	if (!output_filter)
@@ -577,6 +586,7 @@ be_filter_writecb(struct bufferevent *underlying, void *me_)
 
 /* Called when the underlying socket has given us an error */
 // filter.underlying.user.cb
+// 是下层user.cb，会调用上层user.cb
 static void
 be_filter_eventcb(struct bufferevent *underlying, short what, void *me_)
 {
